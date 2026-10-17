@@ -1,416 +1,433 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sistema de Escala - Monitoramento da Frota</title>
+  <title>FROTA.OS // Criador de Escala & Monitoramento</title>
+  <!-- Fontes recomendadas (com fallback seguro caso offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <!-- Bibliotecas via CDN para exportação avançada (o sistema possui fallback nativo caso esteja offline) -->
+  <!-- Bibliotecas externas via cdnjs (com fallback nativo em Canvas 2D se offline) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
-  <div class="app-layout">
-    <!-- MENU LATERAL -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand">
-        <div class="brand-badge">CCO</div>
-        <div>
-          <h1>FROTA ESCALA</h1>
-          <span>Monitoramento & Operação</span>
+  <div class="app-shell" id="appShell">
+    <!-- SIDEBAR RECOLHÍVEL COM ÍCONES SVG -->
+    <aside class="sidebar" id="sidebar" aria-label="Menu Principal">
+      <div class="sidebar-header">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">FROTA<span class="neon-dot">.OS</span></span>
+          <span class="brand-sub">Escala Inteligente v3.0</span>
         </div>
       </div>
 
-      <nav class="sidebar-nav">
-        <button class="nav-btn active" data-view="dashboard">
-          <span class="nav-icon">📊</span> Dashboard
+      <nav class="sidebar-nav" role="navigation">
+        <button type="button" class="nav-item active" data-tab="dashboard" title="Dashboard e Alertas">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          <span class="nav-label">Dashboard</span>
         </button>
-        <button class="nav-btn" data-view="montar-escala">
-          <span class="nav-icon">📅</span> Montar escala mensal
+
+        <button type="button" class="nav-item" data-tab="escala" title="Montar Escala Mensal">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
+          <span class="nav-label">Montar Escala</span>
         </button>
-        <button class="nav-btn" data-view="funcionarios">
-          <span class="nav-icon">👥</span> Funcionários
+
+        <button type="button" class="nav-item" data-tab="funcionarios" title="Cadastro de Funcionários">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nav-label">Funcionários</span>
         </button>
-        <button class="nav-btn" data-view="configurar-escalas">
-          <span class="nav-icon">⚙️</span> Configurar escalas
+
+        <button type="button" class="nav-item" data-tab="blocos" title="Blocos, Turnos e Período">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="nav-label">Turnos &amp; Mês</span>
         </button>
-        <button class="nav-btn" data-view="ferias">
-          <span class="nav-icon">🏖️</span> Férias e afastamentos
+
+        <button type="button" class="nav-item" data-tab="ferias" title="Férias e Afastamentos">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+          <span class="nav-label">Férias &amp; Licenças</span>
         </button>
-        <button class="nav-btn" data-view="relatorios">
-          <span class="nav-icon">📈</span> Relatórios
+
+        <button type="button" class="nav-item" data-tab="relatorios" title="Relatórios por Funcionário e Turno">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="nav-label">Relatórios</span>
         </button>
-        <button class="nav-btn" data-view="exportar">
-          <span class="nav-icon">🖼️</span> Exportar escala
+
+        <button type="button" class="nav-item" data-tab="exportar" title="Exportar PNG, PDF, Impressão e CSV">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span class="nav-label">Exportar Escala</span>
         </button>
-        <button class="nav-btn" data-view="configuracoes">
-          <span class="nav-icon">🛠️</span> Configurações
+
+        <button type="button" class="nav-item" data-tab="config" title="Configurações Visuais e Backup JSON">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="nav-label">Config &amp; Backup</span>
+        </button>
+
+        <button type="button" class="nav-item" data-tab="ajuda" title="Guia Passo a Passo de Como Usar">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span class="nav-label">Ajuda &amp; Passo a Passo</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        <button class="btn btn-primary btn-block" id="btnQuickGenerateImg">
-          📸 GERAR IMAGEM DA ESCALA
+        <button type="button" class="btn btn-neon btn-full" id="btnSidebarGeneratePng">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span class="nav-label">GERAR IMAGEM</span>
         </button>
-        <div class="storage-notice">
-          💾 <strong>Salvamento Automático Ativo</strong><br>
-          Os dados ficam salvos no <code>localStorage</code> deste navegador e não sincronizam automaticamente com outros computadores. Use o Backup JSON para transferir.
+        <div class="storage-status" id="storageStatusBadge" title="Salvo automaticamente no navegador (localStorage)">
+          <span class="status-dot"></span>
+          <span class="nav-label">Auto-Save Local Ativo</span>
         </div>
       </div>
     </aside>
 
-    <!-- CONTEÚDO PRINCIPAL -->
-    <div class="main-wrapper">
-      <!-- BARRA SUPERIOR -->
+    <!-- ÁREA CENTRAL -->
+    <div class="main-container">
+      <!-- TOPBAR -->
       <header class="topbar">
-        <div class="topbar-left">
-          <button class="btn-icon-only" id="btnToggleSidebar" title="Alternar Menu">☰</button>
-          <div class="period-selector">
-            <label for="topMonthSelect">Mês:</label>
-            <select id="topMonthSelect"></select>
-            <label for="topYearSelect">Ano:</label>
-            <input type="number" id="topYearSelect" min="2020" max="2050" step="1">
+        <div class="topbar-group">
+          <button type="button" class="btn-icon" id="btnToggleSidebar" aria-label="Recolher ou expandir menu lateral" title="Alternar Menu">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          <div class="period-pill">
+            <button type="button" class="btn-icon-sm" id="btnPrevMonth" title="Mês Anterior" aria-label="Mês Anterior">
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <select id="topMonthSelect" aria-label="Selecionar Mês"></select>
+            <input type="number" id="topYearInput" min="2020" max="2060" step="1" aria-label="Selecionar Ano">
+            <button type="button" class="btn-icon-sm" id="btnNextMonth" title="Próximo Mês" aria-label="Próximo Mês">
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
           </div>
-          <div class="search-box">
-            <input type="text" id="globalSearchInput" placeholder="🔍 Buscar por nome ou matrícula...">
+
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="globalSearchInput" placeholder="Filtrar nome ou matrícula (apenas tela)..." aria-label="Buscar funcionário">
           </div>
         </div>
-        <div class="topbar-right">
-          <button class="btn btn-outline btn-sm" id="btnUndoManual" title="Desfazer última edição manual" disabled>
-            ↩️ Desfazer
+
+        <div class="topbar-group">
+          <div class="history-controls">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnUndo" disabled title="Desfazer (Ctrl+Z)" aria-label="Desfazer">
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              <span id="undoCountBadge">0</span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnRedo" disabled title="Refazer (Ctrl+Y)" aria-label="Refazer">
+              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+              <span id="redoCountBadge">0</span>
+            </button>
+          </div>
+
+          <button type="button" class="btn btn-ghost btn-sm" id="btnRecalculate" title="Recalcular ciclo automático do mês">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span>Recalcular</span>
           </button>
-          <button class="btn btn-warning btn-sm" id="btnRecalculateAll" title="Recalcular ciclo automático">
-            🔄 Recalcular Escala
+
+          <button type="button" class="btn btn-ghost btn-sm" id="btnTogglePreviewPane" title="Alternar modo de tela dividida">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+            <span>Prévia Ao Vivo</span>
           </button>
-          <button class="btn btn-success btn-sm" id="btnTopGenerateImg">
-            🖼️ GERAR IMAGEM DA ESCALA
+
+          <button type="button" class="btn-icon" id="btnThemeToggle" title="Alternar Tema Escuro / Claro" aria-label="Alternar tema">
+            <svg viewBox="0 0 24 24" width="17" height="17" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           </button>
         </div>
       </header>
 
-      <!-- ÁREA DE TELAS -->
-      <main class="content-area">
+      <!-- WORKSPACE DIVIDIDO: EDITOR (ESQUERDA) + PRÉVIA AO VIVO (DIREITA) -->
+      <div class="workspace-split" id="workspaceSplit">
+        <!-- PAINEL ESQUERDO: MÓDULOS DE EDIÇÃO -->
+        <main class="editor-pane" id="editorPane">
 
-        <!-- 1. TELA: DASHBOARD -->
-        <section class="view-section active" id="view-dashboard">
-          <div class="section-header">
-            <div>
-              <h2>Resumo Operacional do Setor</h2>
-              <p>Visão geral de efetivo, cobertura diária, alertas e prévia da escala selecionada.</p>
-            </div>
-            <div class="header-actions">
-              <button class="btn btn-outline" data-goto="funcionarios">+ Novo Funcionário</button>
-              <button class="btn btn-primary" data-goto="montar-escala">Editar Escala Mensal</button>
-            </div>
-          </div>
-
-          <!-- Cards de Resumo -->
-          <div class="kpi-grid" id="dashboardKpis"></div>
-
-          <!-- Painel de Alertas e Cobertura -->
-          <div class="dashboard-split">
-            <div class="card">
-              <div class="card-header">
-                <h3>⚠️ Alertas de Validação e Cobertura</h3>
+          <!-- ABA 1: DASHBOARD -->
+          <section class="tab-panel active" id="tab-dashboard" aria-label="Dashboard">
+            <div class="panel-header">
+              <div>
+                <h2>Telemetria &amp; Cobertura da Escala</h2>
+                <p>Indicadores em tempo real, gráfico diário de efetivo, mapa de calor por turno e alertas clicáveis.</p>
               </div>
-              <div class="card-body">
-                <ul class="alert-list" id="dashboardAlerts"></ul>
+              <div class="btn-row">
+                <button type="button" class="btn btn-outline btn-sm" data-switch-tab="ajuda">Passo a Passo (Ajuda)</button>
+                <button type="button" class="btn btn-outline btn-sm" data-switch-tab="funcionarios">+ Funcionário</button>
+                <button type="button" class="btn btn-neon btn-sm" data-switch-tab="escala">Editar Grade</button>
               </div>
             </div>
 
-            <div class="card">
-              <div class="card-header">
-                <h3>📊 Efetivo Trabalhando vs. Folga por Dia</h3>
-              </div>
-              <div class="card-body">
-                <div class="daily-coverage-strip" id="dashboardCoverageStrip"></div>
-              </div>
-            </div>
-          </div>
+            <div class="kpi-grid" id="dashboardKpis"></div>
 
-          <!-- Prévia Visual da Planilha -->
-          <div class="card mt-16">
-            <div class="card-header flex-between">
-              <h3>📋 Visualização Rápida da Planilha Oficial</h3>
-              <div class="inline-actions">
-                <span class="badge-hint">Clique em qualquer dia na aba "Montar escala mensal" para editar</span>
-                <button class="btn btn-sm btn-primary" id="btnDashGenerateImg">📸 GERAR IMAGEM DA ESCALA</button>
+            <div class="dash-grid-2">
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Trabalhando vs. Folga por Dia</h3>
+                  <span class="mono-badge" id="chartMinCovLabel">Mín: 4</span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="dailyCoverageCanvas" width="680" height="210" aria-label="Gráfico de cobertura diária"></canvas>
+                </div>
+              </div>
+
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Alertas Operacionais &amp; Validação</h3>
+                  <span class="mono-badge" id="alertsCountBadge">0</span>
+                </div>
+                <ul class="alerts-list" id="dashboardAlertsList"></ul>
               </div>
             </div>
-            <div class="card-body overflow-x">
-              <div id="dashboardSheetPreview"></div>
-            </div>
-          </div>
-        </section>
 
-        <!-- 2. TELA: MONTAR ESCALA MENSAL -->
-        <section class="view-section" id="view-montar-escala">
-          <div class="section-header">
-            <div>
-              <h2>Montar e Editar Escala Mensal</h2>
-              <p>Clique sobre qualquer célula de dia para alterar manualmente entre Trabalho, Folga, Feriado, Férias ou Afastamento.</p>
+            <div class="glass-card mt-14">
+              <div class="card-head">
+                <h3>Mapa de Calor de Cobertura (Turno × Dia do Mês)</h3>
+                <span class="text-muted-sm">Clique em qualquer célula para inspecionar na escala</span>
+              </div>
+              <div class="heatmap-scroll" id="coverageHeatmapContainer"></div>
             </div>
-            <div class="header-actions">
-              <div class="sort-control">
-                <label for="sheetSortSelect">Ordenar por:</label>
-                <select id="sheetSortSelect">
-                  <option value="custom">Ordem do Bloco / Cadastro</option>
+          </section>
+
+          <!-- ABA 2: MONTAR ESCALA MENSAL -->
+          <section class="tab-panel" id="tab-escala" aria-label="Montar Escala Mensal">
+            <div class="panel-header">
+              <div>
+                <h2>Editor Interativo de Escala</h2>
+                <p>Use o Modo Pincel para arrastar e pintar células, selecione intervalos com Shift+Clique ou use atalhos de teclado.</p>
+              </div>
+              <div class="btn-row">
+                <select id="sheetSortSelect" class="input-sm" aria-label="Ordenação da escala">
+                  <option value="custom">Ordem Manual do Bloco</option>
                   <option value="entryTime">Horário de Entrada (Peg.)</option>
-                  <option value="name">Nome do Funcionário</option>
+                  <option value="name">Nome (A-Z)</option>
                   <option value="matricula">Matrícula</option>
                 </select>
+                <button type="button" class="btn btn-outline btn-sm" id="btnCopyRow" title="Copiar ajustes da linha selecionada">Copiar Linha</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnPasteRow" disabled title="Colar ajustes na linha selecionada">Colar Linha</button>
+                <button type="button" class="btn btn-danger btn-sm" id="btnResetMonthOverrides">Limpar Ajustes do Mês</button>
               </div>
-              <button class="btn btn-outline" id="btnRestoreAutoAll">♻️ Restaurar Automático</button>
-              <button class="btn btn-primary" id="btnSheetGenerateImg">📸 GERAR IMAGEM DA ESCALA</button>
             </div>
-          </div>
 
-          <!-- Legenda e Barra de Ferramentas Rápidas -->
-          <div class="sheet-toolbar card mb-16">
-            <div class="toolbar-group">
-              <strong>Modo de Clique Rápido:</strong>
-              <select id="quickPaintMode">
-                <option value="modal">Abrir janela de detalhes ao clicar</option>
-                <option value="T">Aplicar direto: Trabalho (T)</option>
-                <option value="F">Aplicar direto: Folga (F)</option>
-                <option value="F_YELLOW">Aplicar direto: Folga Destacada Amarela (F)</option>
-                <option value="FE">Aplicar direto: Feriado (FE)</option>
-                <option value="FER">Aplicar direto: Férias (FER)</option>
-                <option value="AF">Aplicar direto: Afastado (AF)</option>
-                <option value="AUTO">Restaurar cálculo automático na célula</option>
-              </select>
-            </div>
-            <div class="toolbar-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="chkShowWorkSymbol">
-                Exibir sigla "<span id="lblWorkSymbolPreview">T</span>" nos dias trabalhados (desmarque para deixar em branco como na planilha modelo)
-              </label>
-            </div>
-            <div class="toolbar-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="chkShowWeekdayRow">
-                Exibir linha com dias da semana (D, S, T, Q, Q, S, S)
-              </label>
-            </div>
-          </div>
+            <!-- Barra de Pincel e Atalhos -->
+            <div class="glass-card brush-toolbar mb-14">
+              <div class="brush-group">
+                <span class="toolbar-label">Ferramenta de Clique / Arraste:</span>
+                <div class="brush-pills" id="brushSelector" role="radiogroup" aria-label="Modo Pincel">
+                  <button type="button" class="brush-btn active" data-brush="MODAL" title="Abre modal detalhado ao clicar">Inspecionar (Modal)</button>
+                  <button type="button" class="brush-btn" data-brush="T" title="Atalho: tecla T">Trabalho (T)</button>
+                  <button type="button" class="brush-btn" data-brush="F" title="Atalho: tecla F">Folga (F)</button>
+                  <button type="button" class="brush-btn brush-yellow" data-brush="F_YELLOW" title="Folga com destaque amarelo">Folga Amarela</button>
+                  <button type="button" class="brush-btn" data-brush="FE" title="Atalho: tecla E">Feriado (FE)</button>
+                  <button type="button" class="brush-btn" data-brush="FER">Férias (FER)</button>
+                  <button type="button" class="brush-btn" data-brush="AF">Afastado (AF)</button>
+                  <button type="button" class="brush-btn" data-brush="AUTO" title="Atalho: tecla A">Automático</button>
+                </div>
+              </div>
 
-          <!-- ÁREA PRINCIPAL DA TABELA INTERATIVA -->
-          <div class="sheet-scroll-container" id="interactiveSheetContainer"></div>
-        </section>
-
-        <!-- 3. TELA: FUNCIONÁRIOS -->
-        <section class="view-section" id="view-funcionarios">
-          <div class="section-header">
-            <div>
-              <h2>Cadastro de Funcionários</h2>
-              <p>Cadastre, edite, altere turnos, defina horários (incluindo dupla pegada) e configure o ciclo de escala individual.</p>
+              <div class="brush-options">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkShowWorkSymbol">
+                  <span>Exibir sigla "<strong id="lblWorkSym">T</strong>" nos dias trabalhados</span>
+                </label>
+                <label class="switch-label">
+                  <input type="checkbox" id="chkShowWeekdayRow">
+                  <span>Exibir linha de dias da semana (D S T Q Q S S)</span>
+                </label>
+                <span class="kbd-hint">Atalhos na grade: <kbd>Setas</kbd> navegar · <kbd>T</kbd> Trab · <kbd>F</kbd> Folga · <kbd>E</kbd> Feriado · <kbd>A</kbd> Auto · <kbd>Shift+Clique</kbd> Seleção múltipla</span>
+              </div>
             </div>
-            <div class="header-actions">
-              <button class="btn btn-primary" id="btnOpenNewEmployeeModal">+ Cadastrar Funcionário</button>
-            </div>
-          </div>
 
-          <div class="card mb-16">
-            <div class="card-header flex-between">
-              <h3>Lista de Efetivo Cadastrado</h3>
-              <div class="inline-actions">
-                <select id="empFilterGroup">
-                  <option value="ALL">Todos os Turnos / Grupos</option>
+            <!-- Grade Interativa Principal -->
+            <div class="interactive-grid-shell" id="editorGridContainer"></div>
+          </section>
+
+          <!-- ABA 3: FUNCIONÁRIOS -->
+          <section class="tab-panel" id="tab-funcionarios" aria-label="Cadastro de Funcionários">
+            <div class="panel-header">
+              <div>
+                <h2>Gestão de Efetivo (<span id="empTotalCount">0</span>)</h2>
+                <p>Arraste as linhas para reordenar dentro do bloco ou mover entre turnos. Matrículas são validadas como únicas.</p>
+              </div>
+              <div class="btn-row">
+                <select id="filterEmpBlock" class="input-sm" aria-label="Filtrar por bloco">
+                  <option value="ALL">Todos os Turnos/Blocos</option>
                 </select>
-                <select id="empFilterStatus">
+                <select id="filterEmpStatus" class="input-sm" aria-label="Filtrar por status">
                   <option value="ALL">Todos os Status</option>
                   <option value="ativo">Ativos</option>
                   <option value="ferias">Em Férias</option>
                   <option value="afastado">Afastados</option>
                 </select>
+                <button type="button" class="btn btn-neon btn-sm" id="btnNewEmployee">+ Novo Funcionário</button>
               </div>
             </div>
-            <div class="card-body overflow-x">
-              <table class="data-table" id="employeesTable">
+
+            <div class="glass-card overflow-x">
+              <table class="modern-table" id="employeesTable">
                 <thead>
                   <tr>
+                    <th width="36">Ord.</th>
                     <th>Matrícula</th>
-                    <th>Nome Completo</th>
-                    <th>Peg. / Larg.</th>
-                    <th>Turno / Bloco</th>
-                    <th>Rótulo Escala</th>
-                    <th>Regra Automática</th>
-                    <th>Início do Ciclo</th>
+                    <th>Funcionário</th>
+                    <th>Horário(s)</th>
+                    <th>Bloco / Turno</th>
+                    <th>Escala / Regra</th>
+                    <th>Início Ciclo</th>
                     <th>Status</th>
-                    <th>Ações</th>
+                    <th width="160">Ações</th>
                   </tr>
                 </thead>
                 <tbody id="employeesTableBody"></tbody>
               </table>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- 4. TELA: CONFIGURAR ESCALAS E TURNOS -->
-        <section class="view-section" id="view-configurar-escalas">
-          <div class="section-header">
-            <div>
-              <h2>Configuração do Mês, Turnos e Regras de Escala</h2>
-              <p>Defina o período, feriados do mês, blocos de equipes e parâmetros de cálculo.</p>
-            </div>
-          </div>
-
-          <div class="grid-2col">
-            <!-- Configuração do Período e Setor -->
-            <div class="card">
-              <div class="card-header">
-                <h3>📅 Configuração do Mês e Cabeçalho</h3>
+          <!-- ABA 4: BLOCOS, TURNOS E CONFIGURAÇÃO DO MÊS -->
+          <section class="tab-panel" id="tab-blocos" aria-label="Turnos e Mês">
+            <div class="panel-header">
+              <div>
+                <h2>Configuração do Período, Feriados &amp; Turnos</h2>
+                <p>Personalize cabeçalhos da planilha, feriados (nacionais + móveis de Páscoa + locais) e blocos de equipes.</p>
               </div>
-              <div class="card-body">
-                <form id="formMonthConfig" class="form-stack">
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Título Principal da Planilha</label>
-                      <input type="text" id="cfgSectorTitle" required placeholder="Ex: MONITORAMENTO DA FROTA">
-                    </div>
-                    <div class="form-group">
-                      <label>Rótulo Lateral Esquerdo</label>
-                      <input type="text" id="cfgLeftBadge" required placeholder="Ex: EFETIVO">
-                    </div>
-                  </div>
+            </div>
 
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Subtítulo Personalizado (opcional)</label>
-                      <input type="text" id="cfgCustomSubtitle" placeholder="Deixe vazio para 'ESCALA DE [MÊS] [ANO]'">
-                    </div>
-                    <div class="form-group">
-                      <label>Cobertura Mínima Diária (Efetivo)</label>
-                      <input type="number" id="cfgMinCoverage" min="0" max="500" value="4">
-                    </div>
+            <div class="dash-grid-2">
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Parâmetros do Mês &amp; Feriados</h3>
+                  <button type="button" class="btn btn-ghost btn-xs" id="btnAutoFillHolidays" title="Preenche feriados nacionais fixos e móveis da Páscoa para este mês">Sugerir Feriados do Mês</button>
+                </div>
+                <form id="formMonthParams" class="form-grid">
+                  <div class="form-field">
+                    <label for="cfgSectorTitle">Título Principal da Planilha</label>
+                    <input type="text" id="cfgSectorTitle" required>
                   </div>
-
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Dia Inicial do Período no Mês</label>
-                      <input type="number" id="cfgPeriodStartDay" min="1" max="31" value="1">
-                    </div>
-                    <div class="form-group">
-                      <label>Dia Final do Período no Mês (0 = Último dia automático)</label>
-                      <input type="number" id="cfgPeriodEndDay" min="0" max="31" value="0">
-                    </div>
+                  <div class="form-field">
+                    <label for="cfgLeftBadge">Selo Lateral Esquerdo</label>
+                    <input type="text" id="cfgLeftBadge" required>
                   </div>
-
-                  <div class="form-group">
-                    <label>Feriados / Dias com Destaque Amarelo no Mês Selecionado (separados por vírgula)</label>
-                    <input type="text" id="cfgMonthHolidays" placeholder="Ex: 2, 15, 20">
-                    <small class="help-text">Exemplo para Novembro: 2 (Finados), 15 (Proclamação da República), 20 (Consciência Negra).</small>
+                  <div class="form-field">
+                    <label for="cfgCustomSubtitle">Subtítulo Personalizado (vazio = automático)</label>
+                    <input type="text" id="cfgCustomSubtitle" placeholder="Ex: ESCALA DE NOVEMBRO 2026">
                   </div>
-
-                  <div class="form-group">
-                    <label class="checkbox-label">
-                      <input type="checkbox" id="cfgHighlightAllFolgasYellow">
-                      Destacar todas as células de Folga ("F") em amarelo (além das colunas de feriado)
+                  <div class="form-field">
+                    <label for="cfgMinCoverage">Cobertura Mínima Total Diária</label>
+                    <input type="number" id="cfgMinCoverage" min="0" max="500">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgPeriodStart">Dia Inicial do Período</label>
+                    <input type="number" id="cfgPeriodStart" min="1" max="31">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgPeriodEnd">Dia Final (0 = Último dia do mês)</label>
+                    <input type="number" id="cfgPeriodEnd" min="0" max="31">
+                  </div>
+                  <div class="form-field span-2">
+                    <label for="cfgHolidaysInput">Dias com Destaque Amarelo / Feriados no Mês (separados por vírgula)</label>
+                    <input type="text" id="cfgHolidaysInput" placeholder="Ex: 2, 20">
+                    <small class="field-help" id="movableHolidaysHint"></small>
+                  </div>
+                  <div class="form-field span-2">
+                    <label class="switch-label">
+                      <input type="checkbox" id="cfgHighlightAllOffYellow">
+                      <span>Destacar TODAS as folgas ("F") em amarelo (além dos feriados do mês)</span>
                     </label>
                   </div>
-
-                  <div class="form-group">
-                    <label class="checkbox-label">
-                      <input type="checkbox" id="cfgRepeatHeaderPerBlock">
-                      Repetir cabeçalho (Peg., Larg., Matrícula...) nos blocos inferiores (igual à planilha de referência)
+                  <div class="form-field span-2">
+                    <label class="switch-label">
+                      <input type="checkbox" id="cfgRepeatHeaderGlobal">
+                      <span>Permitir repetição de cabeçalho (Peg., Larg., Matrícula...) entre blocos</span>
                     </label>
                   </div>
-
-                  <button type="submit" class="btn btn-primary">💾 Salvar Configurações do Mês</button>
-                </form>
-              </div>
-            </div>
-
-            <!-- Gestão de Blocos / Turnos / Equipes -->
-            <div class="card">
-              <div class="card-header flex-between">
-                <h3>🗂️ Blocos de Turnos e Equipes</h3>
-                <button class="btn btn-sm btn-primary" id="btnAddGroup">+ Novo Bloco/Turno</button>
-              </div>
-              <div class="card-body">
-                <p class="help-text mb-12">
-                  A planilha é dividida em blocos visuais (ex: Turno da Manhã, Dupla Pegada, Turno da Tarde/Noite). Você pode ordenar os blocos e definir se cada bloco exibe cabeçalho próprio.
-                </p>
-                <div id="groupsListContainer" class="groups-list"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 5. TELA: FÉRIAS E AFASTAMENTOS -->
-        <section class="view-section" id="view-ferias">
-          <div class="section-header">
-            <div>
-              <h2>Controle de Férias e Afastamentos</h2>
-              <p>Registre períodos de férias ou licenças. Funcionários em férias aparecem destacados na seção inferior "FÉRIAS" ou nos dias específicos do período.</p>
-            </div>
-          </div>
-
-          <div class="grid-2col">
-            <div class="card">
-              <div class="card-header">
-                <h3>➕ Registrar Férias ou Afastamento</h3>
-              </div>
-              <div class="card-body">
-                <form id="formVacation" class="form-stack">
-                  <input type="hidden" id="vacId">
-                  <div class="form-group">
-                    <label>Funcionário</label>
-                    <select id="vacEmployeeId" required></select>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Tipo de Registro</label>
-                      <select id="vacType" required>
-                        <option value="FERIAS">Férias Regulamentares</option>
-                        <option value="AFASTAMENTO">Afastamento Médico / INSS</option>
-                        <option value="LICENCA">Licença Remunerada / Outros</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>Modo de Exibição na Planilha</label>
-                      <select id="vacDisplayMode">
-                        <option value="footer_bar">Faixa "FÉRIAS" no rodapé da escala (Padrão da Imagem)</option>
-                        <option value="inline_days">Marcar células nos dias específicos na linha normal</option>
-                        <option value="both">Ambos (Linha normal + Faixa no rodapé)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Data Inicial</label>
-                      <input type="date" id="vacStartDate" required>
-                    </div>
-                    <div class="form-group">
-                      <label>Data Final</label>
-                      <input type="date" id="vacEndDate" required>
-                    </div>
-                  </div>
-                  <div class="form-group">
-                    <label>Observações</label>
-                    <input type="text" id="vacNotes" placeholder="Ex: Férias referentes ao período aquisitivo 2025/2026">
-                  </div>
-                  <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">💾 Salvar Registro</button>
-                    <button type="button" class="btn btn-outline" id="btnCancelVacEdit" style="display:none;">Cancelar Edição</button>
+                  <div class="form-field span-2">
+                    <button type="submit" class="btn btn-neon">Aplicar Configurações do Período</button>
                   </div>
                 </form>
               </div>
+
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Blocos / Turnos da Planilha</h3>
+                  <button type="button" class="btn btn-neon btn-xs" id="btnAddBlock">+ Novo Bloco</button>
+                </div>
+                <p class="text-muted-sm mb-12">Configure a ordem dos turnos, cobertura mínima por turno, linha espaçadora e repetição de cabeçalho.</p>
+                <div id="blocksListContainer" class="blocks-stack"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ABA 5: FÉRIAS E AFASTAMENTOS -->
+          <section class="tab-panel" id="tab-ferias" aria-label="Férias e Afastamentos">
+            <div class="panel-header">
+              <div>
+                <h2>Controle de Férias &amp; Afastamentos</h2>
+                <p>Validação automática contra sobreposição de datas para o mesmo funcionário.</p>
+              </div>
             </div>
 
-            <div class="card">
-              <div class="card-header">
-                <h3>📋 Férias e Afastamentos Cadastrados</h3>
+            <div class="dash-grid-2">
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3 id="vacFormTitle">Registrar Férias ou Afastamento</h3>
+                </div>
+                <form id="formVacation" class="form-grid">
+                  <input type="hidden" id="vacIdInput">
+                  <div class="form-field span-2">
+                    <label for="vacEmpSelect">Funcionário</label>
+                    <select id="vacEmpSelect" required></select>
+                  </div>
+                  <div class="form-field">
+                    <label for="vacTypeSelect">Tipo</label>
+                    <select id="vacTypeSelect" required>
+                      <option value="FERIAS">Férias Regulamentares</option>
+                      <option value="AFASTAMENTO">Afastamento / INSS</option>
+                      <option value="LICENCA">Licença Remunerada</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="vacDisplaySelect">Exibição na Planilha</label>
+                    <select id="vacDisplaySelect">
+                      <option value="footer_bar">Faixa "FÉRIAS" no rodapé</option>
+                      <option value="inline_days">Células "FER/AF" nos dias da linha</option>
+                      <option value="both">Ambos (Linha + Faixa no rodapé)</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="vacStartInput">Data Inicial</label>
+                    <input type="date" id="vacStartInput" required>
+                  </div>
+                  <div class="form-field">
+                    <label for="vacEndInput">Data Final</label>
+                    <input type="date" id="vacEndInput" required>
+                  </div>
+                  <div class="form-field span-2">
+                    <label for="vacNotesInput">Observações</label>
+                    <input type="text" id="vacNotesInput" placeholder="Ex: Período aquisitivo 2025/2026">
+                  </div>
+                  <div class="form-field span-2 btn-row">
+                    <button type="submit" class="btn btn-neon">Salvar Período</button>
+                    <button type="button" class="btn btn-ghost" id="btnCancelVacEdit" hidden>Cancelar Edição</button>
+                  </div>
+                </form>
               </div>
-              <div class="card-body overflow-x">
-                <table class="data-table">
+
+              <div class="glass-card overflow-x">
+                <div class="card-head">
+                  <h3>Registros Ativos</h3>
+                </div>
+                <table class="modern-table">
                   <thead>
                     <tr>
                       <th>Funcionário</th>
                       <th>Tipo</th>
-                      <th>Período</th>
-                      <th>Modo na Escala</th>
-                      <th>Obs.</th>
+                      <th>Início / Fim</th>
+                      <th>Exibição</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -418,27 +435,44 @@
                 </table>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- 6. TELA: RELATÓRIOS -->
-        <section class="view-section" id="view-relatorios">
-          <div class="section-header">
-            <div>
-              <h2>Relatórios e Cálculos de Horas do Período</h2>
-              <p>Contabilização detalhada de dias trabalhados, folgas, carga horária diária líquida (descontando intervalos e tratando virada de meia-noite) e total de horas no mês.</p>
+          <!-- ABA 6: RELATÓRIOS -->
+          <section class="tab-panel" id="tab-relatorios" aria-label="Relatórios">
+            <div class="panel-header">
+              <div>
+                <h2>Relatórios de Carga Horária &amp; Cobertura por Turno</h2>
+                <p>Cálculo preciso de jornadas que cruzam a meia-noite, dupla pegada e desconto de intervalos.</p>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn btn-neon btn-sm" id="btnExportReportCsv">Exportar CSV (;)</button>
+              </div>
             </div>
-            <div class="header-actions">
-              <button class="btn btn-outline" id="btnExportReportCsv">📥 Exportar Relatório (CSV)</button>
-            </div>
-          </div>
 
-          <div class="card mb-16">
-            <div class="card-header">
-              <h3>⏱️ Resumo Individual por Funcionário no Mês</h3>
+            <div class="glass-card mb-14 overflow-x">
+              <div class="card-head">
+                <h3>Resumo Consolidado por Bloco / Turno</h3>
+              </div>
+              <table class="modern-table">
+                <thead>
+                  <tr>
+                    <th>Bloco / Turno</th>
+                    <th>Efetivo Ativo</th>
+                    <th>Mínimo Exigido</th>
+                    <th>Média Trabalhando/Dia</th>
+                    <th>Menor Cobertura no Mês</th>
+                    <th>Total de Horas do Turno</th>
+                  </tr>
+                </thead>
+                <tbody id="reportBlocksBody"></tbody>
+              </table>
             </div>
-            <div class="card-body overflow-x">
-              <table class="data-table" id="reportEmployeeTable">
+
+            <div class="glass-card overflow-x">
+              <div class="card-head">
+                <h3>Detalhamento Individual por Funcionário</h3>
+              </div>
+              <table class="modern-table">
                 <thead>
                   <tr>
                     <th>Matrícula</th>
@@ -446,337 +480,493 @@
                     <th>Horário(s)</th>
                     <th>Escala</th>
                     <th>Jornada Líquida/Dia</th>
-                    <th>Dias Trabalhados</th>
+                    <th>Dias Trab.</th>
                     <th>Folgas (F)</th>
-                    <th>Feriados/Férias/Afast.</th>
-                    <th>Total Horas Previstas</th>
+                    <th>Feriados/Férias</th>
+                    <th>Total Horas Mês</th>
                     <th>Ajustes Manuais</th>
                   </tr>
                 </thead>
-                <tbody id="reportEmployeeBody"></tbody>
+                <tbody id="reportEmployeesBody"></tbody>
               </table>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- 7. TELA: EXPORTAR ESCALA (IMAGEM PNG, PDF, IMPRESSÃO, CSV) -->
-        <section class="view-section" id="view-exportar">
-          <div class="section-header">
-            <div>
-              <h2>Exportar e Imprimir Escala Oficial</h2>
-              <p>Gere a imagem PNG em alta resolução da planilha completa, imprima em formato Paisagem ou exporte para PDF e CSV.</p>
-            </div>
-          </div>
-
-          <div class="card mb-16">
-            <div class="card-body export-controls-bar">
-              <div class="export-options">
-                <label>Formato de Exportação PDF/Impressão:</label>
-                <select id="exportPageMode">
-                  <option value="single_landscape">Página Única Paisagem (Escala Completa)</option>
-                  <option value="split_pages">Dividir em Páginas por Quinzena (Dias 1-15 e 16-Fim)</option>
-                </select>
-                <label>Resolução da Imagem (PNG):</label>
-                <select id="exportScaleResolution">
-                  <option value="2">Alta Definição (2x - Recomendado)</option>
-                  <option value="3">Ultra Definição (3x - Impressão Grande)</option>
-                  <option value="1">Padrão (1x)</option>
-                </select>
-              </div>
-
-              <div class="export-action-buttons">
-                <button class="btn btn-primary" id="btnGenerateImageMain">📸 GERAR IMAGEM DA ESCALA</button>
-                <button class="btn btn-success" id="btnDownloadPng" disabled>⬇️ Baixar PNG</button>
-                <button class="btn btn-outline" id="btnPrintSchedule">🖨️ Imprimir escala</button>
-                <button class="btn btn-outline" id="btnExportPdf">📄 Exportar PDF</button>
-                <button class="btn btn-outline" id="btnExportCsv">📊 Exportar CSV</button>
-                <button class="btn btn-outline" id="btnBackToEdit">✏️ Voltar para editar</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Status e Preview da Imagem Gerada -->
-          <div class="card" id="generatedImageCard">
-            <div class="card-header flex-between">
-              <h3 id="exportPreviewTitle">Pré-visualização da Imagem Oficial</h3>
-              <span id="exportStatusBadge" class="badge">Aguardando geração...</span>
-            </div>
-            <div class="card-body export-preview-Area" id="exportImagePreviewContainer">
-              <p class="empty-hint">Clique em <strong>"GERAR IMAGEM DA ESCALA"</strong> acima para renderizar a imagem PNG de alta resolução.</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- 8. TELA: CONFIGURAÇÕES VISUAIS E BACKUP -->
-        <section class="view-section" id="view-configuracoes">
-          <div class="section-header">
-            <div>
-              <h2>Configurações Visuais, Siglas e Backup de Dados</h2>
-              <p>Personalize cores, siglas da planilha e faça backup completo em arquivo JSON.</p>
-            </div>
-          </div>
-
-          <div class="grid-2col">
-            <!-- Cores e Siglas -->
-            <div class="card">
-              <div class="card-header">
-                <h3>🎨 Cores e Siglas da Planilha</h3>
-              </div>
-              <div class="card-body">
-                <form id="formVisualConfig" class="form-stack">
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Sigla de Trabalho</label>
-                      <input type="text" id="cfgSymWork" maxlength="4" value="T">
-                    </div>
-                    <div class="form-group">
-                      <label>Sigla de Folga</label>
-                      <input type="text" id="cfgSymOff" maxlength="4" value="F">
-                    </div>
-                    <div class="form-group">
-                      <label>Sigla de Feriado</label>
-                      <input type="text" id="cfgSymHoliday" maxlength="4" value="FE">
-                    </div>
-                    <div class="form-group">
-                      <label>Sigla de Férias</label>
-                      <input type="text" id="cfgSymVacation" maxlength="6" value="FER">
-                    </div>
-                  </div>
-
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Cor do Cabeçalho da Tabela</label>
-                      <input type="color" id="cfgColorHeader" value="#757575">
-                    </div>
-                    <div class="form-group">
-                      <label>Cor de Destaque (Folga / Feriado)</label>
-                      <input type="color" id="cfgColorYellow" value="#ffff00">
-                    </div>
-                    <div class="form-group">
-                      <label>Cor de Coluna Fim de Semana</label>
-                      <input type="color" id="cfgColorWeekend" value="#d9d9d9">
-                    </div>
-                    <div class="form-group">
-                      <label>Cor da Coluna "Escala" (S/D)</label>
-                      <input type="color" id="cfgColorScaleBadge" value="#5b9bd5">
-                    </div>
-                  </div>
-
-                  <button type="submit" class="btn btn-primary">💾 Salvar Estilo Visual</button>
-                </form>
+          <!-- ABA 7: EXPORTAR ESCALA -->
+          <section class="tab-panel" id="tab-exportar" aria-label="Exportar Escala">
+            <div class="panel-header">
+              <div>
+                <h2>Central de Exportação Oficial</h2>
+                <p>Exporta sempre a escala completa (ignorando filtros de busca), com largura exata validada e suporte a divisão por quinzena.</p>
               </div>
             </div>
 
-            <!-- Backup JSON e Restauração -->
-            <div class="card">
-              <div class="card-header">
-                <h3>💾 Backup JSON e Gerenciamento de Dados</h3>
-              </div>
-              <div class="card-body form-stack">
-                <p class="help-text">
-                  Todos os dados são salvos automaticamente no <code>localStorage</code> deste navegador. Para salvar uma cópia no seu computador ou transferir para outro PC, utilize a exportação JSON abaixo.
-                </p>
-
-                <div class="backup-actions">
-                  <button class="btn btn-primary" id="btnExportJson">📤 Exportar Backup JSON</button>
-                  <label class="btn btn-outline file-upload-btn">
-                    📥 Importar Backup JSON
-                    <input type="file" id="inputImportJson" accept=".json" hidden>
+            <div class="glass-card mb-14">
+              <div class="export-bar">
+                <div class="export-settings">
+                  <label class="form-inline">
+                    <span>Modo de Página:</span>
+                    <select id="exportSplitMode" class="input-sm">
+                      <option value="full">Escala Mensal Completa (1 a Fim)</option>
+                      <option value="fortnight">Dividir por Quinzena (Dias 1–15 e 16–Fim)</option>
+                    </select>
+                  </label>
+                  <label class="form-inline">
+                    <span>Resolução PNG:</span>
+                    <select id="exportScaleSelect" class="input-sm">
+                      <option value="2">2x (Alta Definição - Recomendado)</option>
+                      <option value="3">3x (Ultra HD - Impressão Grande)</option>
+                      <option value="1">1x (Padrão)</option>
+                    </select>
                   </label>
                 </div>
 
-                <hr class="divider">
-
-                <h4>Opções de Inicialização da Base</h4>
-                <p class="help-text">
-                  Você pode restaurar o modelo de demonstração (baseado na escala de Novembro 2026 do setor) ou limpar todos os cadastros para iniciar do zero.
-                </p>
-                <div class="backup-actions">
-                  <button class="btn btn-warning" id="btnLoadReferenceData">🔄 Carregar Modelo de Referência (Nov/2026)</button>
-                  <button class="btn btn-danger" id="btnClearAllData">🗑️ Limpar Todos os Dados (Começar do Zero)</button>
+                <div class="btn-row">
+                  <button type="button" class="btn btn-neon" id="btnGeneratePngMain">GERAR IMAGEM DA ESCALA</button>
+                  <button type="button" class="btn btn-outline" id="btnDownloadPng" disabled>Baixar PNG</button>
+                  <button type="button" class="btn btn-outline" id="btnExportPdf">Exportar PDF (A4 Paisagem)</button>
+                  <button type="button" class="btn btn-outline" id="btnPrintSchedule">Imprimir Escala</button>
+                  <button type="button" class="btn btn-outline" id="btnExportCsvDirect">Exportar CSV</button>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
 
-      </main>
+            <div class="glass-card">
+              <div class="card-head">
+                <h3>Imagem Renderizada em Alta Resolução</h3>
+                <span class="mono-badge" id="exportRenderStatus">Pronto para gerar</span>
+              </div>
+              <div class="export-canvas-preview" id="exportImageResultBox">
+                <div class="empty-state">Clique em <strong>"GERAR IMAGEM DA ESCALA"</strong> para criar o PNG oficial de alta definição.</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ABA 8: CONFIGURAÇÕES VISUAIS E BACKUP -->
+          <section class="tab-panel" id="tab-config" aria-label="Configurações e Backup">
+            <div class="panel-header">
+              <div>
+                <h2>Identidade da Planilha, Backup JSON &amp; Diagnóstico</h2>
+                <p>Configure siglas, cores oficiais, exporte/importe backups validados com schemaVersion e execute os autotestes do motor.</p>
+              </div>
+            </div>
+
+            <div class="dash-grid-2">
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Siglas &amp; Cores da Planilha Oficial</h3>
+                </div>
+                <form id="formVisualStyle" class="form-grid">
+                  <div class="form-field">
+                    <label for="cfgSymWork">Sigla Trabalho</label>
+                    <input type="text" id="cfgSymWork" maxlength="4">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgSymOff">Sigla Folga</label>
+                    <input type="text" id="cfgSymOff" maxlength="4">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgSymHoliday">Sigla Feriado</label>
+                    <input type="text" id="cfgSymHoliday" maxlength="4">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgSymVacation">Sigla Férias</label>
+                    <input type="text" id="cfgSymVacation" maxlength="6">
+                  </div>
+
+                  <div class="form-field">
+                    <label for="cfgColHeader">Cor Cabeçalho (#757575)</label>
+                    <input type="color" id="cfgColHeader">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgColYellow">Cor Destaque (#FFFF00)</label>
+                    <input type="color" id="cfgColYellow">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgColWeekend">Cor Fim de Semana (#D9D9D9)</label>
+                    <input type="color" id="cfgColWeekend">
+                  </div>
+                  <div class="form-field">
+                    <label for="cfgColScale">Cor Padrão Escala (#5B9BD5)</label>
+                    <input type="color" id="cfgColScale">
+                  </div>
+
+                  <div class="form-field span-2">
+                    <button type="submit" class="btn btn-neon">Salvar Cores e Siglas</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="glass-card">
+                <div class="card-head">
+                  <h3>Backup JSON Versionado &amp; Autotestes</h3>
+                </div>
+                <div class="stack-gap">
+                  <p class="text-muted-sm">
+                    Os dados ficam salvos localmente neste navegador (<code>localStorage</code>). Exporte um arquivo JSON para backup seguro ou transferência entre computadores.
+                  </p>
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-neon" id="btnExportJson">Exportar Backup JSON</button>
+                    <label class="btn btn-outline file-label">
+                      Importar Backup JSON
+                      <input type="file" id="inputImportJson" accept=".json" hidden>
+                    </label>
+                  </div>
+
+                  <hr class="sep">
+
+                  <div class="btn-row">
+                    <button type="button" class="btn btn-outline" id="btnRestoreReference">Carregar Modelo de Referência (Nov/2026)</button>
+                    <button type="button" class="btn btn-danger" id="btnWipeAll">Limpar Tudo (Começar do Zero)</button>
+                  </div>
+
+                  <hr class="sep">
+
+                  <div class="card-head">
+                    <h4>Verificação do Motor (Self-Tests)</h4>
+                    <button type="button" class="btn btn-ghost btn-xs" id="btnRunTests">Executar 14 Testes</button>
+                  </div>
+                  <pre class="test-console" id="selfTestOutput">Clique em "Executar 14 Testes" ou chame runSelfTests() no console.</pre>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ABA 9: AJUDA & PASSO A PASSO -->
+          <section class="tab-panel" id="tab-ajuda" aria-label="Central de Ajuda e Tutorial">
+            <div class="panel-header">
+              <div>
+                <h2>Guia Definitivo — Como Fazer a Sua Escala do Zero</h2>
+                <p>Passo a passo completo revelando como criar os turnos, o "segredo" para alternar as folgas, como fazer edições rápidas e exportar a planilha perfeita.</p>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn btn-neon btn-sm" data-switch-tab="escala">Ir para o Editor de Escala</button>
+              </div>
+            </div>
+
+            <div class="help-tutorial-grid">
+              
+              <!-- PASSO 1 -->
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 1</div>
+                <h3>Como Criar a Escala do Zero</h3>
+                <div class="help-desc">
+                  <strong>1. Limpar a Base:</strong> Vá à aba <em>Config & Backup</em> e clique em <b>"Limpar Tudo (Começar do Zero)"</b> para apagar qualquer dado anterior.<br><br>
+                  <strong>2. Criar os Seus Turnos:</strong> Vá à aba <em>Turnos & Mês</em>. Apague os blocos que lá estiverem e clique em <b>"+ Novo Bloco"</b>. Crie exatamente três blocos: <b>Manhã</b>, <b>Dupla Pegada</b> e <b>Tarde</b>.<br><br>
+                  <strong>3. Configurar o Mês Atual:</strong> Escolha o Mês/Ano na barra lá em cima, insira os feriados do mês na caixa e clique em "Aplicar Configurações".
+                </div>
+                <div class="help-illustration-box" style="background:#0a1712; margin-top:10px;">
+                  <svg viewBox="0 0 520 120" class="help-svg" role="img">
+                    <rect x="40" y="10" width="440" height="30" rx="6" fill="#142922" stroke="#5b9bd5"/>
+                    <text x="60" y="30" fill="#fff" font-family="sans-serif" font-size="12" font-weight="bold">1. MANHÃ</text>
+                    <rect x="40" y="45" width="440" height="30" rx="6" fill="#142922" stroke="#1de9b6"/>
+                    <text x="60" y="65" fill="#fff" font-family="sans-serif" font-size="12" font-weight="bold">2. DUPLA PEGADA</text>
+                    <rect x="40" y="80" width="440" height="30" rx="6" fill="#142922" stroke="#eab308"/>
+                    <text x="60" y="100" fill="#fff" font-family="sans-serif" font-size="12" font-weight="bold">3. TARDE</text>
+                  </svg>
+                </div>
+              </article>
+
+              <!-- PASSO 2 -->
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 2</div>
+                <h3>O Segredo: Como Alternar as Folgas Automaticamente</h3>
+                <div class="help-desc">
+                  A magia toda está na <strong>Data Inicial do Ciclo</strong> durante o Cadastro do Funcionário. É ela que diz ao sistema em que "fase" da escala ele está.<br><br>
+                  • <b>Finais de Semana (S/D-1 e S/D-2):</b> Estas regras são opostas. Se o João folga ao Sábado e você precisa que, nesta semana, ele folgue ao Domingo, basta ir editar o João e <b>avançar a Data Inicial do Ciclo dele em exatamente 7 dias</b>. Isso inverte a fase!<br><br>
+                  • <b>12x36, 6x1 ou 5x2:</b> Se a folga do Carlos está a cair na Terça-feira mas ele precisa folgar na Quarta, basta <b>avançar a Data Inicial em 1 dia</b>. A folga é empurrada para o dia seguinte automaticamente.
+                </div>
+                <div class="help-illustration-box" style="background:#0a1712; margin-top:10px;">
+                  <svg viewBox="0 0 520 120" class="help-svg" role="img">
+                    <rect x="20" y="10" width="220" height="100" rx="8" fill="#142922" stroke="#00e676"/>
+                    <text x="30" y="30" fill="#1de9b6" font-family="sans-serif" font-size="10" font-weight="bold">Data Inicial do Ciclo:</text>
+                    <rect x="30" y="40" width="200" height="24" rx="4" fill="#0b1210"/>
+                    <text x="40" y="56" fill="#fff" font-family="monospace" font-size="11">01 / Nov / 2026</text>
+                    <text x="30" y="80" fill="#a7f3d0" font-family="sans-serif" font-size="9">+7 dias = Inverte Fim de Semana!</text>
+                    <text x="30" y="95" fill="#a7f3d0" font-family="sans-serif" font-size="9">+1 dia  = Empurra folga p/ frente!</text>
+                    <path d="M250 60 L280 60" stroke="#00e676" stroke-width="3" stroke-dasharray="5 5"/>
+                    <polygon points="280,55 295,60 280,65" fill="#00e676"/>
+                    <rect x="305" y="10" width="195" height="100" fill="#fff" stroke="#333"/>
+                    <rect x="305" y="10" width="195" height="20" fill="#757575"/>
+                    <text x="330" y="24" fill="#fff" font-family="sans-serif" font-size="9" font-weight="bold">Dia 1</text>
+                    <text x="380" y="24" fill="#fff" font-family="sans-serif" font-size="9" font-weight="bold">Dia 2</text>
+                    <text x="430" y="24" fill="#fff" font-family="sans-serif" font-size="9" font-weight="bold">Dia 3</text>
+                    <rect x="305" y="30" width="50" height="80" fill="#fff" stroke="#333"/>
+                    <rect x="355" y="30" width="50" height="80" fill="#ffff00" stroke="#333"/>
+                    <rect x="405" y="30" width="50" height="80" fill="#fff" stroke="#333"/>
+                    <text x="330" y="55" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="10" font-weight="bold">T</text>
+                    <text x="380" y="55" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="10" font-weight="bold">F</text>
+                    <text x="430" y="55" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="10" font-weight="bold">T</text>
+                  </svg>
+                </div>
+              </article>
+
+              <!-- PASSO 3 -->
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 3</div>
+                <h3>Ajustes Manuais Rápidos e Inserir Férias</h3>
+                <div class="help-desc">
+                  • <b>Modo Pincel:</b> Um funcionário trocou uma folga com o colega só neste mês? Não mude o ciclo! Na aba "Montar Escala", ative o pincel <b>"Folga Amarela"</b> e arraste o rato sobre as células para as forçar. Ficarão com um ponto vermelho (indicador de ajuste manual, que não sai na impressão). Para apagar erros, prima <code>Ctrl+Z</code>.<br><br>
+                  • <b>Férias:</b> Vá à aba "Férias & Licenças", selecione o funcionário, ponha as datas e escolha <b>"Faixa FÉRIAS no rodapé"</b>. O sistema faz a mesclagem automática no fim da tabela.
+                </div>
+                <div class="help-illustration-box" style="background:#0a1712; margin-top:10px;">
+                  <svg viewBox="0 0 520 120" class="help-svg" role="img">
+                    <rect x="20" y="10" width="100" height="25" rx="6" fill="#ffff00"/>
+                    <text x="70" y="27" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="9" font-weight="bold">Pincel: Folga Amarela</text>
+                    <path d="M130 22 L160 22" stroke="#00e676" stroke-width="3" stroke-dasharray="5 5"/>
+                    <polygon points="160,17 175,22 160,27" fill="#00e676"/>
+                    <rect x="190" y="10" width="50" height="30" fill="#fff" stroke="#333"/>
+                    <rect x="240" y="10" width="50" height="30" fill="#ffff00" stroke="#00c853" stroke-width="3"/>
+                    <text x="265" y="30" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="12" font-weight="bold">F</text>
+                    <circle cx="280" cy="18" r="4" fill="#d50000"/>
+                    <rect x="290" y="10" width="50" height="30" fill="#ffff00" stroke="#00c853" stroke-width="3"/>
+                    <text x="315" y="30" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="12" font-weight="bold">F</text>
+                    <circle cx="330" cy="18" r="4" fill="#d50000"/>
+                    <rect x="340" y="10" width="50" height="30" fill="#fff" stroke="#333"/>
+                    <path d="M315 35 L325 50 L315 45 Z" fill="#fff" stroke="#000"/>
+                    
+                    <rect x="20" y="70" width="480" height="25" fill="#fff" stroke="#333"/>
+                    <text x="50" y="86" fill="#000" font-family="monospace" font-size="10">37750</text>
+                    <text x="140" y="86" fill="#000" font-family="sans-serif" font-size="10" font-weight="bold">ALAN BRITO</text>
+                    <rect x="220" y="70" width="50" height="25" fill="#5b9bd5" stroke="#333"/>
+                    <text x="245" y="86" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="9" font-weight="bold">S/D-2</text>
+                    <rect x="270" y="70" width="230" height="25" fill="#bfbfbf" stroke="#333"/>
+                    <text x="385" y="86" text-anchor="middle" fill="#000" font-family="sans-serif" font-size="11" font-weight="bold">FÉRIAS</text>
+                  </svg>
+                </div>
+              </article>
+
+              <!-- PASSO 4 -->
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 4</div>
+                <h3>Exportação e Salvamento Perfeitos</h3>
+                <div class="help-desc">
+                  Por fim, clique no botão verde <strong>GERAR IMAGEM DA ESCALA</strong> na barra lateral esquerda (ou na aba Exportar).<br><br>
+                  O sistema irá travar a largura da tabela automaticamente para garantir que a imagem não saia preta ou estourada. Após ver o selo "Pronto", clique em <b>"Baixar PNG"</b> para obter a sua escala profissional, ou escolha <b>"Exportar PDF Paisagem"</b>.
+                </div>
+                <div class="help-illustration-box" style="background:#0a1712; margin-top:10px;">
+                  <svg viewBox="0 0 520 120" class="help-svg" role="img">
+                    <rect x="40" y="10" width="200" height="40" rx="8" fill="#00e676"/>
+                    <text x="140" y="35" text-anchor="middle" fill="#04120b" font-family="sans-serif" font-size="11" font-weight="bold">📸 GERAR IMAGEM DA ESCALA</text>
+                    <path d="M250 30 L280 30" stroke="#00e676" stroke-width="3" stroke-dasharray="5 5"/>
+                    <polygon points="280,25 295,30 280,35" fill="#00e676"/>
+                    <rect x="310" y="10" width="160" height="35" rx="6" fill="#142922" stroke="#1de9b6"/>
+                    <text x="390" y="32" text-anchor="middle" fill="#1de9b6" font-family="monospace" font-size="10" font-weight="bold">Baixar PNG Alta Res.</text>
+                    <rect x="310" y="55" width="160" height="35" rx="6" fill="#142922" stroke="#1de9b6"/>
+                    <text x="390" y="77" text-anchor="middle" fill="#1de9b6" font-family="monospace" font-size="10" font-weight="bold">Exportar PDF A4</text>
+                  </svg>
+                </div>
+              </article>
+            </div>
+          </section>
+
+        </main>
+
+        <!-- PAINEL DIREITO: PRÉVIA AO VIVO DA PLANILHA OFICIAL -->
+        <aside class="preview-pane" id="previewPane" aria-label="Prévia ao vivo da escala oficial">
+          <div class="preview-toolbar">
+            <div class="preview-title-group">
+              <span class="live-indicator"></span>
+              <strong>PRÉVIA AO VIVO</strong>
+              <span class="mono-badge" id="previewSyncStamp">Sincronizado</span>
+            </div>
+            <div class="preview-zoom-controls">
+              <button type="button" class="btn-icon-sm" id="btnZoomOut" title="Diminuir Zoom (-)">-</button>
+              <input type="range" id="previewZoomSlider" min="50" max="200" step="5" value="85" aria-label="Zoom da prévia">
+              <span class="mono-badge" id="previewZoomValue">85%</span>
+              <button type="button" class="btn-icon-sm" id="btnZoomIn" title="Aumentar Zoom (+)">+</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="btnZoomFit" title="Ajustar planilha à largura do painel">Ajustar Largura</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="btnExpandPreview" title="Expandir ou restaurar painel de prévia">Expandir</button>
+            </div>
+          </div>
+
+          <div class="preview-viewport" id="previewViewport">
+            <div class="preview-scale-stage" id="previewScaleStage">
+              <div id="liveOfficialPreviewMount"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   </div>
 
-  <!-- ÁREA OCULTA DEDICADA À RENDERIZAÇÃO DE IMAGEM/IMPRESSÃO (SEM BOTÕES OU MENUS) -->
-  <div id="printRenderStaging" class="print-staging-wrapper" aria-hidden="true">
-    <div id="officialPrintableSheet" class="official-sheet-paper"></div>
+  <!-- ÁREA LIMPA PARA IMPRESSÃO E CAPTURA PNG/PDF -->
+  <div id="printStagingArea" class="print-staging-area" aria-hidden="true"></div>
+
+  <!-- CONTAINER DE TOASTS NÃO-BLOQUEANTES -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- MODAL GENÉRICO DE CONFIRMAÇÃO / PROMPT (SUBSTITUI ALERT/CONFIRM/PROMPT) -->
+  <div class="modal-overlay" id="dialogModal" hidden role="dialog" aria-modal="true" aria-labelledby="dialogModalTitle">
+    <div class="modal-card modal-sm">
+      <div class="modal-head">
+        <h3 id="dialogModalTitle">Confirmação</h3>
+        <button type="button" class="btn-close" id="btnCloseDialogModal" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="dialogModalMessage" class="dialog-msg"></p>
+        <div id="dialogPromptWrap" class="form-field mt-12" hidden>
+          <label id="dialogPromptLabel" for="dialogPromptInput">Valor</label>
+          <input type="text" id="dialogPromptInput">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="btnDialogCancel">Cancelar</button>
+        <button type="button" class="btn btn-neon" id="btnDialogConfirm">Confirmar</button>
+      </div>
+    </div>
   </div>
 
-  <!-- MODAL: CADASTRO / EDIÇÃO DE FUNCIONÁRIO -->
-  <div class="modal-backdrop" id="modalEmployee" style="display:none;">
-    <div class="modal-box modal-lg">
-      <div class="modal-header">
-        <h3 id="modalEmployeeTitle">Cadastrar Funcionário</h3>
-        <button class="btn-close" id="btnCloseEmployeeModal">&times;</button>
+  <!-- MODAL DE CADASTRO / EDIÇÃO DE FUNCIONÁRIO -->
+  <div class="modal-overlay" id="employeeModal" hidden role="dialog" aria-modal="true" aria-labelledby="empModalTitle">
+    <div class="modal-card modal-lg">
+      <div class="modal-head">
+        <h3 id="empModalTitle">Cadastrar Funcionário</h3>
+        <button type="button" class="btn-close" id="btnCloseEmpModal" aria-label="Fechar">&times;</button>
       </div>
-      <form id="formEmployee">
-        <div class="modal-body form-stack">
-          <input type="hidden" id="empId">
-
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label>Nome Completo / Nome na Escala *</label>
-              <input type="text" id="empName" required placeholder="Ex: MAYCON ALEXANDRE">
-            </div>
-            <div class="form-group flex-1">
-              <label>Matrícula *</label>
-              <input type="text" id="empMatricula" required placeholder="Ex: 42617">
-            </div>
-            <div class="form-group flex-1">
-              <label>Status Atual</label>
-              <select id="empStatus">
-                <option value="ativo">Ativo na Escala</option>
-                <option value="ferias">Férias (Faixa FÉRIAS)</option>
-                <option value="afastado">Afastado</option>
-              </select>
-            </div>
+      <form id="formEmployeeModal">
+        <div class="modal-body form-grid">
+          <input type="hidden" id="empModalId">
+          <div class="form-field">
+            <label for="empModalName">Nome Completo *</label>
+            <input type="text" id="empModalName" required placeholder="Ex: MAYCON ALEXANDRE">
+          </div>
+          <div class="form-field">
+            <label for="empModalMatricula">Matrícula (Única) *</label>
+            <input type="text" id="empModalMatricula" required placeholder="Ex: 42617">
+          </div>
+          <div class="form-field">
+            <label for="empModalStatus">Status</label>
+            <select id="empModalStatus">
+              <option value="ativo">Ativo na Escala</option>
+              <option value="ferias">Em Férias (Faixa Rodapé)</option>
+              <option value="afastado">Afastado</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="empModalBlock">Bloco / Turno *</label>
+            <select id="empModalBlock" required></select>
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label>Horário de Entrada (Peg.) *</label>
-              <input type="time" id="empEntryTime" required value="05:00">
-            </div>
-            <div class="form-group">
-              <label>Horário de Saída (Larg.) *</label>
-              <input type="time" id="empExitTime" required value="14:00">
-            </div>
-            <div class="form-group">
-              <label>Intervalo Intrajornada (minutos)</label>
-              <input type="number" id="empBreakMinutes" min="0" max="240" value="60">
-            </div>
+          <div class="form-field">
+            <label for="empModalEntry1">Entrada 1 (Peg.)</label>
+            <input type="time" id="empModalEntry1" value="05:00">
+          </div>
+          <div class="form-field">
+            <label for="empModalExit1">Saída 1 (Larg.)</label>
+            <input type="time" id="empModalExit1" value="14:00">
+          </div>
+          <div class="form-field">
+            <label for="empModalBreak">Intervalo (min)</label>
+            <input type="number" id="empModalBreak" min="0" max="240" value="60">
+          </div>
+          <div class="form-field">
+            <label for="empModalSecondShift">Dupla Pegada (2º Horário)</label>
+            <select id="empModalSecondShift">
+              <option value="no">Não</option>
+              <option value="yes">Sim (Exibir 2ª linha)</option>
+            </select>
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label>Possui 2ª Pegada no mesmo dia? (Dupla Pegada)</label>
-              <select id="empHasSecondShift">
-                <option value="no">Não (Turno Único)</option>
-                <option value="yes">Sim (Exibir 2ª linha de horário abaixo)</option>
-              </select>
-            </div>
-            <div class="form-group second-shift-field" style="display:none;">
-              <label>2ª Entrada (Peg. 2)</label>
-              <input type="time" id="empEntryTime2" value="15:00">
-            </div>
-            <div class="form-group second-shift-field" style="display:none;">
-              <label>2ª Saída (Larg. 2)</label>
-              <input type="time" id="empExitTime2" value="19:00">
-            </div>
+          <div class="form-field second-shift-row" hidden>
+            <label for="empModalEntry2">2ª Entrada (Peg. 2)</label>
+            <input type="time" id="empModalEntry2" value="15:00">
+          </div>
+          <div class="form-field second-shift-row" hidden>
+            <label for="empModalExit2">2ª Saída (Larg. 2)</label>
+            <input type="time" id="empModalExit2" value="19:00">
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label>Bloco / Turno / Equipe *</label>
-              <select id="empGroupId" required></select>
-            </div>
-            <div class="form-group">
-              <label>Rótulo na Coluna "Escala" *</label>
-              <input type="text" id="empScaleLabel" required placeholder="Ex: S/D-1, S/D-2, 12x36, 6x1" value="S/D-1">
-            </div>
-            <div class="form-group">
-              <label>Cor da Célula "Escala"</label>
-              <input type="color" id="empScaleColor" value="#5b9bd5">
-            </div>
+          <div class="form-field">
+            <label for="empModalScaleLabel">Rótulo Coluna "Escala" *</label>
+            <input type="text" id="empModalScaleLabel" required value="S/D-1">
+          </div>
+          <div class="form-field">
+            <label for="empModalScaleColor">Cor da Célula "Escala"</label>
+            <input type="color" id="empModalScaleColor" value="#5b9bd5">
+          </div>
+          <div class="form-field">
+            <label for="empModalRuleType">Regra Automática *</label>
+            <select id="empModalRuleType">
+              <option value="SD1">S/D-1 (Revezamento Fim de Semana - Fase 1)</option>
+              <option value="SD2">S/D-2 (Revezamento Fim de Semana - Fase 2 Oposta)</option>
+              <option value="6x1">6x1 (6 Trabalhados × 1 Folga)</option>
+              <option value="5x2">5x2 (5 Trabalhados × 2 Folgas)</option>
+              <option value="4x2">4x2 (4 Trabalhados × 2 Folgas)</option>
+              <option value="12x36">12x36 (Dia Sim / Dia Não)</option>
+              <option value="24x48">24x48 (1 Dia Trab × 2 Dias Folga)</option>
+              <option value="CUSTOM">Personalizada (N Trab × M Folga)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="empModalCycleStart">Data Inicial do Ciclo *</label>
+            <input type="date" id="empModalCycleStart" required value="2026-11-01">
           </div>
 
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label>Regra de Cálculo Automático *</label>
-              <select id="empRuleType">
-                <option value="SD1">Escala S/D-1 (Revezamento Sábado/Domingo - Grupo 1)</option>
-                <option value="SD2">Escala S/D-2 (Revezamento Sábado/Domingo - Grupo 2)</option>
-                <option value="6x1">Escala 6x1 (6 dias trabalhados x 1 dia de folga)</option>
-                <option value="5x2">Escala 5x2 (5 dias trabalhados x 2 dias de folga)</option>
-                <option value="12x36">Escala 12x36 (12h trabalho x 36h descanso por horário)</option>
-                <option value="CUSTOM">Escala Personalizada (Ciclo configurável)</option>
-              </select>
-            </div>
-            <div class="form-group flex-1">
-              <label>Data Inicial do Ciclo *</label>
-              <input type="date" id="empCycleStartDate" required value="2026-11-01">
-            </div>
+          <div class="form-field">
+            <label for="empModalWorkDays">Dias Trabalhados no Ciclo</label>
+            <input type="number" id="empModalWorkDays" min="1" max="31" value="6">
+          </div>
+          <div class="form-field">
+            <label for="empModalOffDays">Dias de Folga no Ciclo</label>
+            <input type="number" id="empModalOffDays" min="1" max="31" value="1">
           </div>
 
-          <div class="form-row" id="customCycleFields">
-            <div class="form-group">
-              <label>Qtd. Dias Trabalhados no Ciclo</label>
-              <input type="number" id="empWorkDays" min="1" max="31" value="6">
-            </div>
-            <div class="form-group">
-              <label>Qtd. Dias de Folga no Ciclo</label>
-              <input type="number" id="empOffDays" min="1" max="31" value="1">
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Observações Internas</label>
-            <input type="text" id="empNotes" placeholder="Observações sobre folgas fixas, restrições ou função...">
+          <div class="form-field span-2">
+            <label for="empModalNotes">Observações</label>
+            <input type="text" id="empModalNotes" placeholder="Observações operacionais do funcionário">
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnCancelEmployeeModal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">💾 Salvar Funcionário</button>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="btnCancelEmpModal">Cancelar</button>
+          <button type="submit" class="btn btn-neon">Salvar Funcionário</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: EDIÇÃO MANUAL DE CÉLULA DO DIA -->
-  <div class="modal-backdrop" id="modalCellEdit" style="display:none;">
-    <div class="modal-box modal-sm">
-      <div class="modal-header">
-        <h3 id="modalCellTitle">Editar Dia da Escala</h3>
-        <button class="btn-close" id="btnCloseCellModal">&times;</button>
+  <!-- MODAL DE EDIÇÃO DE CÉLULA (POPOVER/MODAL) -->
+  <div class="modal-overlay" id="cellModal" hidden role="dialog" aria-modal="true" aria-labelledby="cellModalTitle">
+    <div class="modal-card modal-sm">
+      <div class="modal-head">
+        <h3 id="cellModalTitle">Ajuste de Dia</h3>
+        <button type="button" class="btn-close" id="btnCloseCellModal" aria-label="Fechar">&times;</button>
       </div>
-      <form id="formCellEdit">
-        <div class="modal-body form-stack">
-          <input type="hidden" id="cellEmpId">
-          <input type="hidden" id="cellDayNumber">
-          <p id="modalCellSubtitle" class="help-text"></p>
-
-          <div class="form-group">
-            <label>Situação do Dia</label>
-            <select id="cellStatusSelect">
-              <option value="AUTO">🔄 Seguir Cálculo Automático do Ciclo</option>
-              <option value="T">✅ Trabalho (T / Em branco)</option>
-              <option value="F">🟨 Folga (F)</option>
-              <option value="FE">🎉 Feriado (FE)</option>
-              <option value="FER">🏖️ Férias (FER)</option>
-              <option value="AF">🏥 Afastamento / Licença (AF)</option>
-              <option value="CUSTOM">✏️ Sigla Personalizada</option>
+      <form id="formCellModal">
+        <div class="modal-body form-grid">
+          <p id="cellModalInfo" class="text-muted-sm span-2"></p>
+          <div class="form-field span-2">
+            <label for="cellModalStatus">Status do(s) Dia(s) Selecionado(s)</label>
+            <select id="cellModalStatus">
+              <option value="AUTO">Automático (Seguir Regra do Ciclo)</option>
+              <option value="T">Trabalho (T / Em branco)</option>
+              <option value="F">Folga (F)</option>
+              <option value="FE">Feriado (FE)</option>
+              <option value="FER">Férias (FER)</option>
+              <option value="AF">Afastamento (AF)</option>
+              <option value="CUSTOM">Sigla Personalizada</option>
             </select>
           </div>
-
-          <div class="form-group" id="cellCustomSymbolGroup" style="display:none;">
-            <label>Sigla Personalizada (máx. 4 letras)</label>
-            <input type="text" id="cellCustomSymbol" maxlength="4" placeholder="Ex: AT, BH, TR">
+          <div class="form-field span-2" id="cellModalCustomWrap" hidden>
+            <label for="cellModalCustomText">Sigla Personalizada (máx. 4 caracteres)</label>
+            <input type="text" id="cellModalCustomText" maxlength="4" placeholder="Ex: BH, TR, AT">
           </div>
-
-          <div class="form-group">
-            <label>Destaque de Fundo Amarelo nesta Célula</label>
-            <select id="cellYellowHighlight">
-              <option value="default">Padrão da coluna / regra geral</option>
-              <option value="yes">Forçar fundo Amarelo (#FFFF00)</option>
-              <option value="no">Sem fundo amarelo (Branco / Cinza Fim de Semana)</option>
+          <div class="form-field span-2">
+            <label for="cellModalYellow">Destaque Amarelo (#FFFF00)</label>
+            <select id="cellModalYellow">
+              <option value="default">Padrão da Coluna / Feriado</option>
+              <option value="yes">Forçar Destaque Amarelo</option>
+              <option value="no">Remover Destaque Amarelo</option>
             </select>
           </div>
-
-          <div class="form-group">
-            <label>Justificativa / Observação do Ajuste</label>
-            <input type="text" id="cellNoteInput" placeholder="Ex: Troca de plantão ou folga de feriado">
+          <div class="form-field span-2">
+            <label for="cellModalNote">Justificativa / Observação</label>
+            <input type="text" id="cellModalNote" placeholder="Ex: Troca de turno autorizada">
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" id="btnCancelCellModal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Aplicar Alteração</button>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="btnCancelCellModal">Cancelar</button>
+          <button type="submit" class="btn btn-neon">Aplicar</button>
         </div>
       </form>
     </div>
