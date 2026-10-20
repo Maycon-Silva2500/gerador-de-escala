@@ -296,6 +296,7 @@ body {
   grid-template-columns: minmax(460px, 1.15fr) minmax(400px, 0.85fr);
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .workspace-split.preview-hidden {
@@ -318,6 +319,7 @@ body {
   padding: 18px;
   overflow-y: auto;
   min-width: 0;
+  position: relative;
 }
 
 .preview-pane {
@@ -684,13 +686,14 @@ body {
 .hm-high { background: rgba(29, 233, 182, 0.36); color: #ffffff; }
 
 /* ============================================================================
-   MODO PINCEL E GRADE INTERATIVA
+   MODO PINCEL, BARRA CONTEXTUAL E GRADE INTERATIVA
    ============================================================================ */
 
 .brush-toolbar {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
 }
 
 .brush-group {
@@ -736,6 +739,24 @@ body {
   border-color: #000000;
 }
 
+/* Nova Barra Contextual de Ações em Massa */
+.context-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(14, 24, 21, 0.95);
+  border: 1px solid var(--neon-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 230, 118, 0.2);
+  animation: slideDownCtx 0.2s ease forwards;
+}
+
+@keyframes slideDownCtx {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .brush-options {
   display: flex;
   align-items: center;
@@ -775,7 +796,41 @@ kbd {
 }
 
 /* ============================================================================
-   PLANILHA OFICIAL (LARGURA EXATA CONTROLADA PARA EXPORTAÇÃO PNG PERFEITA)
+   MENU POPOVER CONTEXTUAL DA CÉLULA DE ESCALA (S/D-1, etc)
+   ============================================================================ */
+
+.context-menu-popover {
+  position: absolute;
+  z-index: 400;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--neon-primary);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  min-width: 250px;
+  animation: popoverIn 0.15s ease forwards;
+}
+
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.popover-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.popover-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================================
+   PLANILHA OFICIAL E INDICADORES DE HORAS EXTRAS (LARGURA FIXADA EM PX)
    ============================================================================ */
 
 .official-sheet-paper {
@@ -890,6 +945,7 @@ kbd {
   color: #000000;
   font-weight: 700;
   font-size: 11px;
+  cursor: context-menu;
 }
 
 .fleet-schedule-table td.cell-day {
@@ -900,25 +956,31 @@ kbd {
   background-color: #ffffff;
 }
 
-.fleet-schedule-table td.cell-day.is-weekend {
-  background-color: var(--sheet-weekend);
+.fleet-schedule-table td.cell-day.is-weekend { background-color: var(--sheet-weekend); }
+.fleet-schedule-table td.cell-day.is-yellow { background-color: var(--sheet-yellow) !important; }
+.fleet-schedule-table td.cell-day.is-vacation { background-color: var(--sheet-vacation); color: #000000; }
+.fleet-schedule-table td.cell-day.is-leave { background-color: #fed7aa; color: #7c2d12; }
+
+/* Indicadores de Hora Extra (HE) */
+.he-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-top: 6px solid #2563eb;
+  border-right: 6px solid transparent;
+}
+.he-mini {
+  display: block;
+  font-size: 7.5px;
+  font-weight: normal;
+  color: #2563eb;
+  line-height: 1;
+  margin-top: -1px;
 }
 
-.fleet-schedule-table td.cell-day.is-yellow {
-  background-color: var(--sheet-yellow) !important;
-}
-
-.fleet-schedule-table td.cell-day.is-vacation {
-  background-color: var(--sheet-vacation);
-  color: #000000;
-}
-
-.fleet-schedule-table td.cell-day.is-leave {
-  background-color: #fed7aa;
-  color: #7c2d12;
-}
-
-/* Seleção e Foco Acessível nas Células (Apenas Interativo) */
+/* Seleção e Foco Acessível (Apenas Interativo) */
 .interactive-sheet td.cell-day:focus,
 .interactive-sheet td.cell-day.cell-focused {
   outline: 2.5px solid #00c853;
@@ -928,6 +990,7 @@ kbd {
 
 .interactive-sheet td.cell-day.cell-selected {
   box-shadow: inset 0 0 0 2px #0284c7;
+  background-color: #e0f2fe !important;
 }
 
 .interactive-sheet td.cell-day.is-manual::after {
@@ -1094,6 +1157,7 @@ kbd {
 
 .form-field input,
 .form-field select,
+.form-field textarea,
 .input-sm {
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
@@ -1105,7 +1169,8 @@ kbd {
 }
 
 .form-field input:focus,
-.form-field select:focus {
+.form-field select:focus,
+.form-field textarea:focus {
   outline: none;
   border-color: var(--neon-primary);
   box-shadow: var(--neon-glow);
@@ -1209,7 +1274,7 @@ kbd {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  z-index: 200;
+  z-index: 500; /* Acima do popover */
 }
 
 .modal-overlay[hidden] {
@@ -1273,7 +1338,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 300;
+  z-index: 600;
 }
 
 .toast-item {
@@ -1321,7 +1386,8 @@ kbd {
   }
   .app-shell,
   .toast-container,
-  .modal-overlay {
+  .modal-overlay,
+  .context-menu-popover {
     display: none !important;
   }
   #printStagingArea {
