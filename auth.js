@@ -1,142 +1,130 @@
-/* ==========================================================================
-   FROTA.OS v5.0 - auth.js
-   Gerenciador de Autenticação e Controle de Sessão (Mock/Local)
-   ========================================================================== */
+/**
+ * FROTA.OS v5.0 // MÓDULO DE AUTENTICAÇÃO E SEGURANÇA
+ */
+'use strict';
 
-(function () {
-  'use strict';
+const AuthManager = {
+  auth: null,
+  currentUser: null,
 
-  // Credenciais estáticas para demonstração/uso local
-  const MOCK_CREDENTIALS = {
-    email: 'admin@frota.os',
-    password: 'admin' // Senha padrão para o ambiente de testes
-  };
-
-  const AuthManager = {
-    currentUser: null,
-
-    init() {
-      this.checkSession();
-      this.bindEvents();
-    },
-
-    bindEvents() {
-      // Intercepta o formulário de login no Modal
-      const loginForm = document.getElementById('loginForm');
-      if (loginForm) {
-        loginForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          const email = document.getElementById('loginEmail').value.trim();
-          const pass = document.getElementById('loginPassword').value.trim();
-          
-          this.login(email, pass);
-        });
-      }
-
-      // Botão de Logout na aba Conta
-      const btnLogout = document.getElementById('btnLogout');
-      if (btnLogout) {
-        btnLogout.addEventListener('click', () => {
-          this.logout();
-        });
-      }
-    },
-
-    checkSession() {
-      const savedSession = sessionStorage.getItem('FROTA_OS_SESSION');
-      if (savedSession) {
-        try {
-          this.currentUser = JSON.parse(savedSession);
-          this.setAppState(true);
-        } catch (e) {
-          console.error('Erro ao ler sessão', e);
-          this.logout();
-        }
-      } else {
-        // Se não houver sessão, define como Somente Leitura (ou Modo Local)
-        // No FROTA.OS 5.0, vamos permitir o uso offline com aviso.
-        this.setAppState(false);
-      }
-    },
-
-    login(email, password) {
-      const loginErrorMsg = document.getElementById('loginErrorMsg');
-      const loginBtn = document.getElementById('btnSubmitLogin');
-
-      if (loginBtn) {
-        loginBtn.disabled = true;
-        loginBtn.textContent = 'Autenticando...';
-      }
-
-      // Simula um delay de rede (500ms)
-      setTimeout(() => {
-        if (email === MOCK_CREDENTIALS.email && password === MOCK_CREDENTIALS.password) {
-          const userObj = {
-            uid: 'local_admin_001',
-            email: email,
-            role: 'admin',
-            loginTime: new Date().toISOString()
-          };
-
-          this.currentUser = userObj;
-          sessionStorage.setItem('FROTA_OS_SESSION', JSON.stringify(userObj));
-          
-          if (loginErrorMsg) loginErrorMsg.hidden = true;
-          
-          // Fecha o modal de login se estiver aberto
-          const loginModal = document.getElementById('loginModal');
-          if (loginModal) loginModal.setAttribute('hidden', 'true');
-
-          this.setAppState(true);
-          
-          // Limpa o formulário
-          document.getElementById('loginForm').reset();
-        } else {
-          // Falha na autenticação
-          if (loginErrorMsg) {
-            loginErrorMsg.textContent = 'E-mail ou senha incorretos.';
-            loginErrorMsg.hidden = false;
-          }
-        }
-
-        if (loginBtn) {
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Entrar';
-        }
-      }, 500);
-    },
-
-    logout() {
-      this.currentUser = null;
-      sessionStorage.removeItem('FROTA_OS_SESSION');
-      this.setAppState(false);
-      
-      // Opcional: Forçar a exibição do modal de login após logout
-      // const loginModal = document.getElementById('loginModal');
-      // if (loginModal) loginModal.removeAttribute('hidden');
-    },
-
-    setAppState(isAuthenticated) {
-      if (window.Store) {
-        // Se estiver autenticado, tem permissão total. Se não, fica em modo leitura.
-        // *Nota: Para liberar o uso 100% offline sem login, mude a linha abaixo para `false`.
-        window.Store.state.isReadOnly = !isAuthenticated; 
-        
-        // Dispara a re-renderização global da interface
-        window.Store.notify();
-        if (window.Renderer) {
-          window.Renderer.renderAll();
-        }
-      }
+  init() {
+    this.bindUI();
+    if (typeof firebase === 'undefined' || !firebase.apps.length) {
+      console.warn("⚠️ Firebase não configurado. Entrando em Modo Offline.");
+      this.goOffline();
+      return;
     }
-  };
+    this.auth = firebase.auth();
+    this.listenAuth();
+  },
 
-  // Expõe o AuthManager globalmente
-  window.AuthManager = AuthManager;
+  toast(msg, type='ok') {
+    const box = document.getElementById('toastContainer');
+    if (!box) return;
+    const el = document.createElement('div');
+    el.className = `toast-item ${type}`;
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  },
 
-  // Inicializa assim que o DOM estiver pronto
-  document.addEventListener('DOMContentLoaded', () => {
-    AuthManager.init();
-  });
+  bindUI() {
+    const $ = id => document.getElementById(id);
+    
+    if($('formLoginScreen'))$('formLoginScreen').onsubmit = e => e.preventDefault();
+    if($('btnOverlayLogin'))$('btnOverlayLogin').onclick = e => this.login($('loginEmail').value, $('loginPass').value, e.target);
+    if($('btnOverlayRegister'))$('btnOverlayRegister').onclick = e => this.register($('loginEmail').value, $('loginPass').value, e.target);
+    if($('btnOverlayOffline'))$('btnOverlayOffline').onclick = () => this.goOffline();
+    if($('btnOverlayResetPass')) $('btnOverlayResetPass').onclick = () => this.resetPassword($('loginEmail').value);
+    
+    if($('fbAuthForm'))$('fbAuthForm').onsubmit = e => e.preventDefault();
+    if($('btnFbLogin'))$('btnFbLogin').onclick = e => this.login($('fbEmail').value, $('fbPass').value, e.target);
+    if($('btnFbRegister'))$('btnFbRegister').onclick = e => this.register($('fbEmail').value, $('fbPass').value, e.target);
+    if($('btnFbLogout'))$('btnFbLogout').onclick = () => this.logout();
+    if($('btnFbResetPass')) $('btnFbResetPass').onclick = () => this.resetPassword($('fbEmail').value);
+  },
 
-})();
+  async login(email, pass, btn) {
+    if (!this.auth) return this.toast('Nuvem não detetada.', 'error');
+    if(!email || !pass) return this.toast('Preencha o e-mail e a palavra-passe.', 'warn');
+    const origText = btn.textContent; btn.textContent = 'A entrar...'; btn.disabled = true;
+    try { 
+      await this.auth.signInWithEmailAndPassword(email, pass); 
+      this.toast('Sessão iniciada!', 'ok'); 
+    }
+    catch(e) { this.toast(this.translateError(e.code), 'error'); }
+    finally { btn.textContent = origText; btn.disabled = false; }
+  },
+
+  async register(email, pass, btn) {
+    if (!this.auth) return this.toast('Nuvem não detetada.', 'error');
+    if(!email || !pass) return this.toast('Preencha os dados.', 'warn');
+    const origText = btn.textContent; btn.textContent = 'A criar...'; btn.disabled = true;
+    try { 
+      await this.auth.createUserWithEmailAndPassword(email, pass); 
+      this.toast('Conta criada com sucesso!', 'ok'); 
+    }
+    catch(e) { this.toast(this.translateError(e.code), 'error'); }
+    finally { btn.textContent = origText; btn.disabled = false; }
+  },
+
+  async logout() {
+    if (!this.auth) return;
+    try { await this.auth.signOut(); this.toast('Sessão terminada.', 'ok'); }
+    catch(e) { this.toast('Erro ao sair.', 'error'); }
+  },
+
+  async resetPassword(email) {
+    if (!this.auth) return this.toast('Nuvem não detetada.', 'error');
+    if(!email) return this.toast('Preencha o campo de e-mail.', 'warn');
+    try {
+        await this.auth.sendPasswordResetEmail(email);
+        this.toast('E-mail de redefinição enviado!', 'ok');
+    } catch(e) {
+        this.toast(this.translateError(e.code), 'error');
+    }
+  },
+
+  goOffline() {
+    if (document.getElementById('loginScreen')) document.getElementById('loginScreen').hidden = true;
+    if (document.getElementById('fbAuthState')) document.getElementById('fbAuthState').hidden = true;
+    this.updateBadge('Offline (Local)', 'var(--text-secondary)');
+    this.toast('Modo Offline Ativado.', 'warn');
+    if (window.Store) { window.Store.state.isReadOnly = false; window.Renderer.renderAll(); }
+  },
+
+  listenAuth() {
+    this.auth.onAuthStateChanged(user => {
+      this.currentUser = user;
+      if (user) {
+        if(document.getElementById('loginScreen')) document.getElementById('loginScreen').hidden = true;
+        if(document.getElementById('fbAuthState')) { document.getElementById('fbAuthState').hidden = true; document.getElementById('fbLoggedInState').hidden = false; }
+        if(document.getElementById('fbUserEmailSpan')) document.getElementById('fbUserEmailSpan').textContent = user.email;
+        this.updateBadge(`Conectado: ${user.email}`, 'var(--neon-primary)');
+        if (window.Store) { window.Store.state.isReadOnly = false; window.Renderer.renderAll(); }
+      } else {
+        if(document.getElementById('fbAuthState')) { document.getElementById('fbAuthState').hidden = false; document.getElementById('fbLoggedInState').hidden = true; }
+        this.updateBadge('Offline (Deslogado)', 'var(--text-secondary)');
+      }
+    });
+  },
+
+  updateBadge(text, color) {
+    const b = document.getElementById('topCloudStatus');
+    if(b) { b.textContent = text; b.style.color = color; b.style.borderColor = color; }
+  },
+
+  translateError(code) {
+    switch(code) {
+      case 'auth/invalid-email': return 'E-mail inválido.';
+      case 'auth/user-not-found': return 'Nenhuma conta encontrada.';
+      case 'auth/wrong-password': return 'Palavra-passe incorreta.';
+      case 'auth/email-already-in-use': return 'Este e-mail já tem conta.';
+      case 'auth/weak-password': return 'A palavra-passe deve ter pelo menos 6 caracteres.';
+      case 'auth/invalid-credential': return 'Credenciais inválidas.';
+      default: return `Erro: ${code}`;
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => { AuthManager.init(); });

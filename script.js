@@ -1,964 +1,313 @@
-/* ==========================================================================
-   FROTA.OS v5.0 - script.js
-   Engine do Sistema, Estado, Renderização e Componentes do App Shell
-   ========================================================================== */
+/**
+ * FROTA.OS v5.0 - SCRIPT MESTRE UNIFICADO
+ * Engloba Engine, Store, SheetBuilder e Ligações de Interface (DOM)
+ */
+'use strict';
 
-(function () {
-  'use strict';
+const $ = id => document.getElementById(id);
+const escapeHTML = str => String(str == null ? '' : str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
 
-  // --------------------------------------------------------------------------
-  // 0. UTILITÁRIOS DE SEGURANÇA E FORMATAGEM
-  // --------------------------------------------------------------------------
-  function escapeHTML(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+// ==========================================
+// 1. ENGINE LÓGICO
+// ==========================================
+const ScheduleEngine = {
+  formatDateISO: (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+  getDaysInMonth: (y, m) => new Date(y, m + 1, 0).getDate(),
+  getDayOfWeek: (y, m, d) => new Date(y, m, d).getDay(),
+  isWeekend: (y, m, d) => [0, 6].includes(new Date(y, m, d).getDay()),
+  parseISODate: iso => iso ? new Date(parseInt(iso.split('-')[0]), parseInt(iso.split('-')[1]) - 1, parseInt(iso.split('-')[2])) : new Date(),
+  daysBetween: (a, b) => Math.floor((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000),
+
+  getAutoStatus(emp, y, m, d) {
+    const target = new Date(y, m, d), start = this.parseISODate(emp.cycleStartDate || `${y}-01-01`);
+    const diff = this.daysBetween(start, target), dw = this.getDayOfWeek(y, m, d), rule = emp.rule || 'SD1';
+    
+    if (rule === 'SD1') return dw === 6 ? 'F' : 'T';
+    if (rule === 'SD2') return dw === 0 ? 'F' : 'T';
+    if (rule === '5x2') return [0, 6].includes(dw) ? 'F' : 'T';
+    if (rule === '6x1') return ((diff % 7) + 7) % 7 === 6 ? 'F' : 'T';
+    if (rule === '12x36') return ((diff % 2) + 2) % 2 === 0 ? 'T' : 'F';
+    return 'T';
+  },
+
+  resolveCell(emp, y, m, d, cfg, vacs, overrides, ot) {
+    const iso = this.formatDateISO(y, m, d), key = `${emp.id}_${iso}`;
+    if (vacs.some(v => v.employeeId === emp.id && iso >= v.startDate && iso <= v.endDate)) return { status: 'FERIAS', text: 'FER', isYellow: true };
+    
+    const over = overrides[key];
+    const base = over ? over.status : this.getAutoStatus(emp, y, m, d);
+    const isHol = (cfg.holidays || []).includes(iso);
+    const isYel = isHol || (base === 'F' && cfg.yellowAllOff);
+    
+    return { status: base, text: base, isOverride: !!over, isYellow: isYel, isHoliday: isHol, he: ot[key] || null };
   }
+};
 
-  function validateColorHex(color) {
-    return /^#[0-9a-f]{6}$/i.test(color) ? color : '#3b82f6';
+// ==========================================
+// 2. STATE MANAGER (STORE)
+// ==========================================
+const Store = {
+  state: {
+    config: { mainTitle: 'MONITORAMENTO DA FROTA', subtitle: '', year: new Date().getFullYear(), monthIndex: new Date().getMonth(), minCoverage: 4, emptyRowsPerBlock: 3, yellowAllOff: false, holidays: [] },
+    blocks: [{ id: 'b1', name: 'Manhã', order: 1 }, { id: 'b2', name: 'Tarde', order: 2 }],
+    employees: [], vacations: [], manualOverrides: {}, overtime: {},
+    activeTab: 'tab-dashboard', activeBrush: 'SELECT', theme: 'dark', previewZoom: 0.85, searchQuery: '', isReadOnly: false
+  },
+  undoStack: [], redoStack: [],
+
+  init() {
+    try { const raw = localStorage.getItem('FROTA_OS_V5_STATE'); if (raw) Object.assign(this.state, JSON.parse(raw)); } catch(e){}
+  },
+  notify() {
+    localStorage.setItem('FROTA_OS_V5_STATE', JSON.stringify({ config: this.state.config, blocks: this.state.blocks, employees: this.state.employees, vacations: this.state.vacations, manualOverrides: this.state.manualOverrides, overtime: this.state.overtime }));
+    Renderer.renderAll();
+  },
+  snapshot() {
+    if(this.undoStack.length > 20) this.undoStack.shift();
+    this.undoStack.push(JSON.stringify({ emp: this.state.employees, mo: this.state.manualOverrides, ot: this.state.overtime, vac: this.state.vacations }));
+    this.redoStack = [];
+    Renderer.updateHistoryBtns();
+  },
+  undo() {
+    if(!this.undoStack.length) return;
+    this.redoStack.push(JSON.stringify({ emp: this.state.employees, mo: this.state.manualOverrides, ot: this.state.overtime, vac: this.state.vacations }));
+    const prev = JSON.parse(this.undoStack.pop());
+    this.state.employees = prev.emp; this.state.manualOverrides = prev.mo; this.state.overtime = prev.ot; this.state.vacations = prev.vac;
+    this.notify(); Renderer.updateHistoryBtns();
+  },
+  redo() {
+    if(!this.redoStack.length) return;
+    this.undoStack.push(JSON.stringify({ emp: this.state.employees, mo: this.state.manualOverrides, ot: this.state.overtime, vac: this.state.vacations }));
+    const next = JSON.parse(this.redoStack.pop());
+    this.state.employees = next.emp; this.state.manualOverrides = next.mo; this.state.overtime = next.ot; this.state.vacations = next.vac;
+    this.notify(); Renderer.updateHistoryBtns();
   }
+};
 
-  function sanitizeId(id) {
-    return String(id).replace(/[^a-zA-Z0-9_-]/g, '');
+// ==========================================
+// 3. RENDERIZADOR & UI DOM
+// ==========================================
+const SheetBuilder = {
+  buildHTML(interactive = false) {
+    const { config: cfg, blocks, employees, vacations, manualOverrides: mo, overtime: ot, searchQuery: q } = Store.state;
+    const dCount = ScheduleEngine.getDaysInMonth(cfg.year, cfg.monthIndex);
+    const mNames = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+    const title = cfg.subtitle ? escapeHTML(cfg.subtitle.toUpperCase()) : `${mNames[cfg.monthIndex]} ${cfg.year}`;
+    
+    let html = `<div class="official-sheet-paper" style="width:${400 + (dCount*25)}px"><table class="fleet-schedule-table" style="width:100%">`;
+    html += `<tr class="row-main-title"><th colspan="${4 + dCount}">${escapeHTML(cfg.mainTitle)}</th></tr>`;
+    html += `<tr class="row-subtitle"><th colspan="${4 + dCount}">${title}</th></tr>`;
+    html += `<tr class="row-col-headers"><th style="width:160px;">EFETIVO</th><th style="width:70px;">Matrícula</th><th style="width:60px;">Escala</th>`;
+    html += `<th colspan="${dCount}">${title}</th><th>Assistentes:</th></tr><tr class="row-col-headers"><th colspan="3"></th>`;
+    for(let d=1; d<=dCount; d++) html += `<th class="${ScheduleEngine.isWeekend(cfg.year, cfg.monthIndex, d)?'is-weekend':''}">${d}</th>`;
+    html += `<th></th></tr>`;
+
+    let emps = employees;
+    if(q) emps = emps.filter(e => e.name.toLowerCase().includes(q.toLowerCase()) || e.registration.includes(q));
+
+    [...blocks].sort((a,b)=>a.order-b.order).forEach(b => {
+      html += `<tr class="row-subtitle"><td colspan="${4 + dCount}">${escapeHTML(b.name.toUpperCase())}</td></tr>`;
+      emps.filter(e => e.blockId === b.id).forEach(e => {
+        html += `<tr><td style="text-align:left;padding-left:6px;">${escapeHTML(e.name)}</td><td>${escapeHTML(e.registration)}</td><td ${interactive?`data-ctx-emp="${e.id}" class="col-escala cursor-pointer"`:''}>${escapeHTML(e.rule)}</td>`;
+        for(let d=1; d<=dCount; d++) {
+          const c = ScheduleEngine.resolveCell(e, cfg.year, cfg.monthIndex, d, cfg, vacations, mo, ot);
+          let cls = c.isYellow?'is-yellow':(ScheduleEngine.isWeekend(cfg.year, cfg.monthIndex, d)?'is-weekend':'');
+          html += `<td ${interactive?`data-emp-id="${e.id}" data-day="${d}" class="interactive-cell ${cls}"`:`class="${cls}"`}>`;
+          if(c.isOverride && interactive) html += `<div style="position:absolute;top:2px;left:2px;width:4px;height:4px;background:blue;border-radius:50%;"></div>`;
+          html += escapeHTML(c.text);
+          if(c.he) html += `<span class="he-mini">${c.he.type}</span>`;
+          html += `</td>`;
+        }
+        html += `<td></td></tr>`;
+      });
+      for(let i=0; i<cfg.emptyRowsPerBlock; i++) {
+        html += `<tr><td>&nbsp;</td><td></td><td></td>`;
+        for(let d=1; d<=dCount; d++) html += `<td class="${(cfg.holidays||[]).includes(ScheduleEngine.formatDateISO(cfg.year,cfg.monthIndex,d))?'is-yellow':(ScheduleEngine.isWeekend(cfg.year,cfg.monthIndex,d)?'is-weekend':'')}"></td>`;
+        html += `<td></td></tr>`;
+      }
+    });
+    return html + `</table></div>`;
   }
+};
 
-  // --------------------------------------------------------------------------
-  // 1. Dicionário de LAYOUTS OFICIAIS (Fonte Única de Verdade)
-  // --------------------------------------------------------------------------
-  const LAYOUTS = {
-    classico: {
-      id: 'classico',
-      name: 'Clássico',
-      colNameW: 160,
-      colMatW: 70,
-      colEscalaW: 60,
-      colDayW: 25,
-      rowH: 25,
-      fontSize: 11,
-      bgHeader: '#757575',
-      textHeader: '#ffffff',
-      bgBlue: '#5b9bd5',
-      bgYellow: '#ffff00',
-      bgWeekend: '#d9d9d9'
-    },
-    compacto: {
-      id: 'compacto',
-      name: 'Compacto',
-      colNameW: 130,
-      colMatW: 55,
-      colEscalaW: 50,
-      colDayW: 20,
-      rowH: 20,
-      fontSize: 9,
-      bgHeader: '#757575',
-      textHeader: '#ffffff',
-      bgBlue: '#5b9bd5',
-      bgYellow: '#ffff00',
-      bgWeekend: '#d9d9d9'
-    },
-    moderno: {
-      id: 'moderno',
-      name: 'Verde Moderno',
-      colNameW: 160,
-      colMatW: 70,
-      colEscalaW: 60,
-      colDayW: 25,
-      rowH: 25,
-      fontSize: 11,
-      bgHeader: '#14532d',
-      textHeader: '#ffffff',
-      bgBlue: '#0ea5e9',
-      bgYellow: '#fde047',
-      bgWeekend: '#e2e8f0'
-    },
-    alto_contraste: {
-      id: 'alto_contraste',
-      name: 'Alto Contraste',
-      colNameW: 160,
-      colMatW: 70,
-      colEscalaW: 60,
-      colDayW: 25,
-      rowH: 25,
-      fontSize: 11,
-      bgHeader: '#ffffff',
-      textHeader: '#000000',
-      bgBlue: '#ffffff',
-      bgYellow: '#ffff00',
-      bgWeekend: '#d9d9d9'
-    },
-    semana: {
-      id: 'semana',
-      name: 'Divisão Semanal',
-      colNameW: 160,
-      colMatW: 70,
-      colEscalaW: 60,
-      colDayW: 25,
-      rowH: 25,
-      fontSize: 11,
-      bgHeader: '#1e3a8a',
-      textHeader: '#ffffff',
-      bgBlue: '#3b82f6',
-      bgYellow: '#ffff00',
-      bgWeekend: '#cbd5e1'
+const Renderer = {
+  renderAll() {
+    if($('editorGridContainer'))$('editorGridContainer').innerHTML = SheetBuilder.buildHTML(true);
+    if($('liveOfficialPreviewMount')) {
+        $('liveOfficialPreviewMount').innerHTML = SheetBuilder.buildHTML(false);$('liveOfficialPreviewMount').style.transform = `scale(${Store.state.previewZoom})`;
+        $('liveOfficialPreviewMount').style.transformOrigin = 'top center';
     }
-  };
+    this.renderTables();
+    this.renderDashboard();
+    this.syncForms();
+  },
 
-  // --------------------------------------------------------------------------
-  // 2. ScheduleEngine (Lógica de Escalas)
-  // --------------------------------------------------------------------------
-  const ScheduleEngine = {
-    formatDateISO(year, monthIndex, day) {
-      const y = String(year).padStart(4, '0');
-      const m = String(monthIndex + 1).padStart(2, '0');
-      const d = String(day).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    },
+  renderTables() {
+    if($('employeesTableBody'))$('employeesTableBody').innerHTML = Store.state.employees.map((e,i) => `<tr><td>${i+1}</td><td>${escapeHTML(e.registration)}</td><td><strong>${escapeHTML(e.name)}</strong></td><td>-</td><td>${escapeHTML((Store.state.blocks.find(b=>b.id===e.blockId)||{}).name)}</td><td><span class="mono-badge">${escapeHTML(e.rule)}</span></td><td>${escapeHTML(e.cycleStartDate)}</td><td>Ativo</td><td><button class="btn btn-outline btn-xs" onclick="UI.openEmpModal('${e.id}')">Editar</button> <button class="btn btn-danger btn-xs" onclick="UI.delEmp('${e.id}')">Excluir</button></td></tr>`).join('');
+    if($('blocksListContainer'))$('blocksListContainer').innerHTML = Store.state.blocks.map(b => `<div class="block-item"><strong>${escapeHTML(b.name)}</strong><button class="btn btn-danger btn-xs" onclick="UI.delBlock('${b.id}')">X</button></div>`).join('');
+    if($('vacationsTableBody'))$('vacationsTableBody').innerHTML = Store.state.vacations.map(v => `<tr><td>${escapeHTML((Store.state.employees.find(e=>e.id===v.employeeId)||{}).name)}</td><td>${v.startDate}</td><td>${v.endDate}</td><td>Rodapé</td><td><button class="btn btn-danger btn-xs" onclick="UI.delVac('${v.id}')">Remover</button></td></tr>`).join('');
+  },
 
-    getDaysInMonth(year, monthIndex) {
-      return new Date(year, monthIndex + 1, 0).getDate();
-    },
+  renderDashboard() {
+    if($('empTotalCount'))$('empTotalCount').textContent = Store.state.employees.length;
+    if($('alertsCountBadge'))$('alertsCountBadge').textContent = Store.state.employees.length ? '0' : '1';
+    if($('dashboardAlertsList'))$('dashboardAlertsList').innerHTML = Store.state.employees.length ? '<li class="alert-row ok">Escala validada sem conflitos.</li>' : '<li class="alert-row critico">Nenhum funcionário cadastrado.</li>';
+  },
 
-    getDayOfWeek(year, monthIndex, day) {
-      return new Date(year, monthIndex, day).getDay(); // 0 = Dom, 6 = Sáb
-    },
+  syncForms() {
+    if($('cfgSectorTitle') && document.activeElement !== $('cfgSectorTitle'))$('cfgSectorTitle').value = Store.state.config.mainTitle;
+    if($('cfgMinCoverage') && document.activeElement !== $('cfgMinCoverage'))$('cfgMinCoverage').value = Store.state.config.minCoverage;
+    if($('topMonthSelect')) {$('topMonthSelect').innerHTML = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'].map((m,i)=>`<option value="${i}" ${i===Store.state.config.monthIndex?'selected':''}>${m}</option>`).join('');
+        if($('topYearInput'))$('topYearInput').value = Store.state.config.year;
+    }
+  },
 
-    isWeekend(year, monthIndex, day) {
-      const dw = this.getDayOfWeek(year, monthIndex, day);
-      return dw === 0 || dw === 6;
-    },
+  updateHistoryBtns() {
+    if($('btnUndo'))$('btnUndo').disabled = Store.undoStack.length === 0;
+    if($('btnRedo'))$('btnRedo').disabled = Store.redoStack.length === 0;
+    if($('undoCountBadge'))$('undoCountBadge').textContent = Store.undoStack.length;
+    if($('redoCountBadge'))$('redoCountBadge').textContent = Store.redoStack.length;
+  }
+};
 
-    parseISODate(isoStr) {
-      if (!isoStr) return new Date();
-      const parts = isoStr.split('-');
-      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-    },
+// ==========================================
+// 4. CONTROLADOR DE EVENTOS (UI)
+// ==========================================
+const UI = {
+  toast(msg) {
+    const c = $('toastContainer'); if(!c) return;
+    const t = document.createElement('div'); t.className = 'toast-item ok'; t.textContent = msg;
+    c.appendChild(t); setTimeout(() => t.remove(), 3000);
+  },
+  
+  openModal(id) { if($(id))$(id).hidden = false; },
+  closeModal(id) { if($(id))$(id).hidden = true; },
+  
+  openEmpModal(id) {
+    const e = Store.state.employees.find(x => x.id === id) || {};
+    $('empModalId').value = e.id \vert{}\vert{} '';$('empModalName').value = e.name || '';
+    $('empModalMatricula').value = e.registration \vert{}\vert{} '';$('empModalBlock').innerHTML = Store.state.blocks.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    if(e.blockId) $('empModalBlock').value = e.blockId;
+    $('empModalRuleType').value = e.rule \vert{}\vert{} 'SD1';$('empModalCycleStart').value = e.cycleStartDate || ScheduleEngine.formatDateISO(Store.state.config.year, Store.state.config.monthIndex, 1);
+    this.openModal('employeeModal');
+  },
+  delEmp(id) { if(confirm('Excluir funcionário?')) { Store.snapshot(); Store.state.employees = Store.state.employees.filter(e=>e.id!==id); Store.notify(); this.toast('Excluído.'); } },
+  delBlock(id) { if(confirm('Excluir bloco?')) { Store.snapshot(); Store.state.blocks = Store.state.blocks.filter(b=>b.id!==id); Store.notify(); } },
+  delVac(id) { if(confirm('Excluir férias?')) { Store.snapshot(); Store.state.vacations = Store.state.vacations.filter(v=>v.id!==id); Store.notify(); } },
 
-    daysBetween(dateA, dateB) {
-      const utc1 = Date.UTC(dateA.getFullYear(), dateA.getMonth(), dateA.getDate());
-      const utc2 = Date.UTC(dateB.getFullYear(), dateB.getMonth(), dateB.getDate());
-      return Math.floor((utc2 - utc1) / (1000 * 60 * 60 * 24));
-    },
+  bind() {
+    // Topbar & Sidebar
+    if($('btnToggleSidebar')) $('btnToggleSidebar').onclick = () =>$('sidebar').classList.toggle('collapsed');
+    if($('btnThemeToggle'))$('btnThemeToggle').onclick = () => { Store.state.theme = Store.state.theme === 'dark'?'light':'dark'; document.documentElement.setAttribute('data-theme', Store.state.theme); };
+    if($('btnTogglePreviewPane')) $('btnTogglePreviewPane').onclick = () =>$('workspaceSplit').classList.toggle('preview-hidden');
+    if($('btnUndo'))$('btnUndo').onclick = () => Store.undo();
+    if($('btnRedo'))$('btnRedo').onclick = () => Store.redo();
+    
+    // Meses
+    if($('topMonthSelect'))$('topMonthSelect').onchange = e => { Store.state.config.monthIndex = parseInt(e.target.value); Store.notify(); };
+    if($('topYearInput'))$('topYearInput').onchange = e => { Store.state.config.year = parseInt(e.target.value); Store.notify(); };
+    if($('btnPrevMonth'))$('btnPrevMonth').onclick = () => { let m = Store.state.config.monthIndex - 1; if(m<0){m=11; Store.state.config.year--;} Store.state.config.monthIndex=m; Store.notify(); };
+    if($('btnNextMonth'))$('btnNextMonth').onclick = () => { let m = Store.state.config.monthIndex + 1; if(m>11){m=0; Store.state.config.year++;} Store.state.config.monthIndex=m; Store.notify(); };
 
-    getAutoStatus(employee, year, monthIndex, day) {
-      const targetDate = new Date(year, monthIndex, day);
-      const startDate = this.parseISODate(employee.cycleStartDate || `${year}-01-01`);
-      const diffDays = this.daysBetween(startDate, targetDate);
-      const rule = employee.rule || 'SD1';
-      const dayOfWeek = this.getDayOfWeek(year, monthIndex, day);
+    // Abas
+    document.querySelectorAll('.nav-item[data-tab]').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        if($(`tab-${btn.dataset.tab}`)) $(`tab-${btn.dataset.tab}`).classList.add('active');
+      };
+    });
 
-      if (rule === 'SD1') {
-        if (dayOfWeek === 6) return 'F';
-        return 'T';
-      }
-      if (rule === 'SD2') {
-        if (dayOfWeek === 0) return 'F';
-        return 'T';
-      }
-      if (rule === '5x2') {
-        if (dayOfWeek === 0 || dayOfWeek === 6) return 'F';
-        return 'T';
-      }
-      if (rule === '6x1') {
-        const mod = ((diffDays % 7) + 7) % 7;
-        return mod === 6 ? 'F' : 'T';
-      }
-      if (rule === '12x36') {
-        const mod = ((diffDays % 2) + 2) % 2;
-        return mod === 0 ? 'T' : 'F';
-      }
-      return 'T';
-    },
-
-    resolveCell(employee, year, monthIndex, day, config, vacations, manualOverrides, overtime) {
-      const isoDate = this.formatDateISO(year, monthIndex, day);
-      const empId = employee.id;
-
-      // 1. Verficar Férias em registro oficial
-      const hasVacation = vacations.some(v => v.employeeId === empId && isoDate >= v.startDate && isoDate <= v.endDate);
-      if (hasVacation) {
-        return { status: 'FERIAS', text: 'FÉR', isVacation: true, isOverride: false, isYellow: true };
-      }
-
-      // 2. Verificar Ajuste Manual
-      const overrideKey = `${empId}_${isoDate}`;
-      const overrideVal = manualOverrides[overrideKey];
-
-      let baseStatus = overrideVal ? overrideVal.status : this.getAutoStatus(employee, year, monthIndex, day);
-      const isOverride = !!overrideVal;
-
-      // 3. Feriados e Amarelar
-      const isHoliday = (config.holidays || []).includes(isoDate);
-      let isYellow = isHoliday;
-
-      if (baseStatus === 'F' && config.yellowAllOff) {
-        isYellow = true;
-      }
-
-      // 4. Checar Horas Extras
-      const heData = overtime[overrideKey];
-
-      let text = baseStatus;
-      if (baseStatus === 'FER') text = 'FER';
-
-      return {
-        status: baseStatus,
-        text: text,
-        isVacation: false,
-        isOverride: isOverride,
-        isYellow: isYellow,
-        isHoliday: isHoliday,
-        he: heData || null
+    // Pincéis e Grade
+    document.querySelectorAll('.brush-btn').forEach(btn => {
+      btn.onclick = () => { document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); Store.state.activeBrush = btn.dataset.brush; };
+    });
+    
+    if($('editorGridContainer')) {$('editorGridContainer').onclick = e => {
+        if(Store.state.isReadOnly) return;
+        const td = e.target.closest('.interactive-cell');
+        if(!td) return;
+        const eid = td.dataset.empId, d = parseInt(td.dataset.day);
+        const brush = Store.state.activeBrush;
+        if(brush === 'HE') {
+          $('cellModalTitle').textContent = `Dia ${d} - Hora Extra`;
+          $('cellModal').dataset.targetKey = `${eid}_${ScheduleEngine.formatDateISO(Store.state.config.year, Store.state.config.monthIndex, d)}`;
+          this.openModal('cellModal'); return;
+        }
+        if(brush !== 'S') {
+          Store.snapshot();
+          const k = `${eid}_${ScheduleEngine.formatDateISO(Store.state.config.year, Store.state.config.monthIndex, d)}`;
+          if(brush==='AUTO') delete Store.state.manualOverrides[k];
+          else if(brush==='F_YELLOW') Store.state.manualOverrides[k] = {status: 'F', yellow: true};
+          else Store.state.manualOverrides[k] = {status: brush};
+          Store.notify();
+        }
+      };
+      $('editorGridContainer').oncontextmenu = e => {
+        const td = e.target.closest('.col-escala');
+        if(td) { e.preventDefault(); const p=$('scalePopoverMenu'); p.hidden=false; p.style.left=e.clientX+'px'; p.style.top=e.clientY+'px'; p.dataset.eid=td.dataset.ctxEmp; }
       };
     }
-  };
 
-  // --------------------------------------------------------------------------
-  // 3. GERENCIADOR DE ESTADO (STORE COM UNDO/REDO E PERSISTÊNCIA)
-  // --------------------------------------------------------------------------
-  const Store = {
-    state: {
-      config: {
-        mainTitle: 'MONITORAMENTO DA FROTA',
-        subtitle: '',
-        year: new Date().getFullYear(),
-        monthIndex: new Date().getMonth(),
-        minCoverage: 4,
-        emptyRowsPerBlock: 3,
-        yellowAllOff: false,
-        sheetLayout: 'classico',
-        holidays: []
-      },
-      blocks: [
-        { id: 'b1', name: 'Manhã', order: 1 },
-        { id: 'b2', name: 'Dupla Pegada', order: 2 },
-        { id: 'b3', name: 'Tarde', order: 3 }
-      ],
-      employees: [],
-      vacations: [],
-      manualOverrides: {},
-      overtime: {},
-      activeTab: 'tabDashboard',
-      activeBrush: 'SELECT',
-      theme: 'dark',
-      previewHidden: false,
-      previewZoom: 1.0,
-      searchQuery: '',
-      selectedCell: null,
-      isReadOnly: false
-    },
+    // Popover Regras
+    if($('btnPopoverCancel'))$('btnPopoverCancel').onclick = () => this.closeModal('scalePopoverMenu');
+    if($('btnPopoverInvert'))$('btnPopoverInvert').onclick = () => {
+      Store.snapshot(); const emp = Store.state.employees.find(e=>e.id===$('scalePopoverMenu').dataset.eid);
+      if(emp) emp.rule = emp.rule === 'SD1'?'SD2':'SD1'; this.closeModal('scalePopoverMenu'); Store.notify();
+    };
 
-    undoStack: [],
-    redoStack: [],
-    listeners: [],
+    // Formulários e Modais Fixos
+    document.querySelectorAll('.btn-close, #btnCancelEmpModal, #btnCancelCellModal').forEach(b => b.onclick = e => e.target.closest('.modal-overlay').hidden = true);
+    
+    if($('btnNewEmployee'))$('btnNewEmployee').onclick = () => this.openEmpModal(null);
+    if($('formEmployeeModal'))$('formEmployeeModal').onsubmit = e => {
+      e.preventDefault(); Store.snapshot();
+      const id = $('empModalId').value || `emp_${Date.now()}`;
+      const payload = { id, name: $('empModalName').value.toUpperCase(), registration: $('empModalMatricula').value, blockId:$('empModalBlock').value, rule: $('empModalRuleType').value, cycleStartDate:$('empModalCycleStart').value };
+      const idx = Store.state.employees.findIndex(x=>x.id===id);
+      if(idx>=0) Store.state.employees[idx] = payload; else Store.state.employees.push(payload);
+      this.closeModal('employeeModal'); Store.notify(); this.toast('Salvo!');
+    };
 
-    init() {
-      this.checkLegacyData();
-      this.loadLocal();
-      this.sanitizeState();
-    },
+    if($('formMonthParams'))$('formMonthParams').onsubmit = e => {
+      e.preventDefault(); Store.snapshot();
+      Store.state.config.mainTitle = $('cfgSectorTitle').value; Store.state.config.minCoverage = parseInt($('cfgMinCoverage').value)||4;
+      Store.notify(); this.toast('Parâmetros salvos.');
+    };
 
-    checkLegacyData() {
-      const legacyV3 = localStorage.getItem('FROTA_OS_SCHEDULE_STATE_V3');
-      const legacyV4 = localStorage.getItem('FROTA_OS_SCHEDULE_STATE_V4');
-      if (legacyV3 || legacyV4) {
-        const modal = document.getElementById('legacyDataModal');
-        if (modal) modal.removeAttribute('hidden');
-      }
-    },
+    if($('btnAddBlock'))$('btnAddBlock').onclick = () => {
+      const nm = prompt('Nome do Bloco:');
+      if(nm) { Store.snapshot(); Store.state.blocks.push({id:`b_${Date.now()}`, name: nm.toUpperCase(), order: Store.state.blocks.length+1}); Store.notify(); }
+    };
 
-    wipeLegacyData() {
-      localStorage.removeItem('FROTA_OS_SCHEDULE_STATE_V3');
-      localStorage.removeItem('FROTA_OS_SCHEDULE_STATE_V4');
-      localStorage.removeItem('MONITORAMENTO_FROTA_ESCALA_V1');
-      localStorage.removeItem('MONITORAMENTO_FROTA_ESCALA_V2');
-    },
+    if($('formVacation'))$('formVacation').onsubmit = e => {
+      e.preventDefault(); Store.snapshot();
+      Store.state.vacations.push({ id:`v_${Date.now()}`, employeeId:$('vacEmpSelect').value, startDate:$('vacStartInput').value, endDate:$('vacEndInput').value });$('formVacation').reset(); Store.notify(); this.toast('Férias salvas!');
+    };
 
-    subscribe(fn) {
-      this.listeners.push(fn);
-    },
+    if($('formCellModal'))$('formCellModal').onsubmit = e => {
+      e.preventDefault(); Store.snapshot();
+      const k = $('cellModal').dataset.targetKey;
+      const m = parseInt($('cellModalHE').value)||0;
+      if(m>0) Store.state.overtime[k] = { type: $('cellModalHEType').value, minutes: m };
+      else delete Store.state.overtime[k];
+      this.closeModal('cellModal'); Store.notify(); this.toast('Aplicado!');
+    };
 
-    notify() {
-      this.saveLocal();
-      this.listeners.forEach(fn => fn(this.state));
-    },
-
-    saveLocal() {
+    // Botões Inferiores e Zoom
+    if($('btnZoomIn'))$('btnZoomIn').onclick = () => { Store.state.previewZoom+=0.1; Renderer.renderLivePreview(); };
+    if($('btnZoomOut'))$('btnZoomOut').onclick = () => { Store.state.previewZoom-=0.1; Renderer.renderLivePreview(); };
+    if($('btnWipeAll'))$('btnWipeAll').onclick = () => { if(confirm('Zerar toda a base local?')) { Store.wipeAllData(); } };
+    if($('btnGeneratePngMain'))$('btnGeneratePngMain').onclick = async () => {
+      this.toast('Gerando PNG...');
+      const host = document.createElement('div'); host.style.cssText='position:absolute;left:-9999px;'; host.innerHTML = SheetBuilder.buildHTML(false); document.body.appendChild(host);
       try {
-        const payload = {
-          config: this.state.config,
-          blocks: this.state.blocks,
-          employees: this.state.employees,
-          vacations: this.state.vacations,
-          manualOverrides: this.state.manualOverrides,
-          overtime: this.state.overtime
-        };
-        localStorage.setItem('FROTA_OS_V5_STATE', JSON.stringify(payload));
-      } catch (e) {
-        console.error('Erro ao salvar localmente', e);
-      }
-    },
-
-    loadLocal() {
-      try {
-        const raw = localStorage.getItem('FROTA_OS_V5_STATE');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.config) Object.assign(this.state.config, parsed.config);
-          if (Array.isArray(parsed.blocks)) this.state.blocks = parsed.blocks;
-          if (Array.isArray(parsed.employees)) this.state.employees = parsed.employees;
-          if (Array.isArray(parsed.vacations)) this.state.vacations = parsed.vacations;
-          if (parsed.manualOverrides) this.state.manualOverrides = parsed.manualOverrides;
-          if (parsed.overtime) this.state.overtime = parsed.overtime;
-        }
-      } catch (e) {
-        console.error('Erro ao carregar do localStorage', e);
-      }
-    },
-
-    sanitizeState() {
-      if (!LAYOUTS[this.state.config.sheetLayout]) {
-        this.state.config.sheetLayout = 'classico';
-      }
-      this.state.config.emptyRowsPerBlock = Math.max(0, Math.min(10, parseInt(this.state.config.emptyRowsPerBlock, 10) || 3));
-    },
-
-    snapshot() {
-      if (this.undoStack.length > 30) this.undoStack.shift();
-      this.undoStack.push(JSON.stringify({
-        employees: this.state.employees,
-        manualOverrides: this.state.manualOverrides,
-        overtime: this.state.overtime,
-        vacations: this.state.vacations
-      }));
-      this.redoStack = [];
-    },
-
-    undo() {
-      if (this.undoStack.length === 0) return;
-      const current = JSON.stringify({
-        employees: this.state.employees,
-        manualOverrides: this.state.manualOverrides,
-        overtime: this.state.overtime,
-        vacations: this.state.vacations
-      });
-      this.redoStack.push(current);
-      const previous = JSON.parse(this.undoStack.pop());
-      this.state.employees = previous.employees;
-      this.state.manualOverrides = previous.manualOverrides;
-      this.state.overtime = previous.overtime;
-      this.state.vacations = previous.vacations;
-      this.notify();
-    },
-
-    redo() {
-      if (this.redoStack.length === 0) return;
-      const current = JSON.stringify({
-        employees: this.state.employees,
-        manualOverrides: this.state.manualOverrides,
-        overtime: this.state.overtime,
-        vacations: this.state.vacations
-      });
-      this.undoStack.push(current);
-      const next = JSON.parse(this.redoStack.pop());
-      this.state.employees = next.employees;
-      this.state.manualOverrides = next.manualOverrides;
-      this.state.overtime = next.overtime;
-      this.state.vacations = next.vacations;
-      this.notify();
-    },
-
-    wipeAllData() {
-      this.state.employees = [];
-      this.state.vacations = [];
-      this.state.manualOverrides = {};
-      this.state.overtime = {};
-      this.notify();
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 4. BUILDER DE PLANILHA (HTML E IMPRESSÃO)
-  // --------------------------------------------------------------------------
-  const SheetBuilder = {
-    buildHTML(options = {}) {
-      const { interactive = false, ignoreSearch = false } = options;
-      const cfg = Store.state.config;
-      const layout = LAYOUTS[cfg.sheetLayout] || LAYOUTS.classico;
-      const daysCount = ScheduleEngine.getDaysInMonth(cfg.year, cfg.monthIndex);
-
-      const monthNames = [
-        'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
-        'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
-      ];
-
-      const monthTitleStr = `${monthNames[cfg.monthIndex]} ${cfg.year}`;
-      const subtitleStr = cfg.subtitle ? escapeHTML(cfg.subtitle.toUpperCase()) : monthTitleStr;
-
-      let html = `<div class="sheet-container" data-sheet-layout="${escapeHTML(layout.id)}">`;
-      html += `<table class="official-table">`;
-
-      // Linha 1: Título Principal
-      html += `<tr class="row-main-title"><th colspan="${4 + daysCount}">${escapeHTML(cfg.mainTitle)}</th></tr>`;
-
-      // Linha 2: Subtítulo
-      html += `<tr class="row-subtitle"><th colspan="${4 + daysCount}">${subtitleStr}</th></tr>`;
-
-      // Linha 3: Cabeçalhos das Colunas
-      html += `<tr class="row-col-headers">`;
-      html += `<th class="th-efetivo" style="width:${layout.colNameW}px;">EFETIVO</th>`;
-      html += `<th style="width:${layout.colMatW}px;">Matrícula</th>`;
-      html += `<th style="width:${layout.colEscalaW}px;">Escala</th>`;
-      html += `<th class="th-month-title" style="width:${layout.colDayW * daysCount}px;" colspan="${daysCount}">${monthTitleStr}</th>`;
-      html += `<th>Assistentes:</th>`;
-      html += `</tr>`;
-
-      // Linha 4: Dias do Mês
-      html += `<tr class="row-col-headers">`;
-      html += `<th colspan="3"></th>`;
-      for (let d = 1; d <= daysCount; d++) {
-        const isWk = ScheduleEngine.isWeekend(cfg.year, cfg.monthIndex, d);
-        const cls = isWk ? 'cell-weekend' : '';
-        html += `<th class="${cls}" style="width:${layout.colDayW}px;">${d}</th>`;
-      }
-      html += `<th></th>`;
-      html += `</tr>`;
-
-      // Processar Blocos e Funcionários
-      const sortedBlocks = [...Store.state.blocks].sort((a, b) => a.order - b.order);
-
-      let filteredEmployees = Store.state.employees;
-      if (!ignoreSearch && Store.state.searchQuery) {
-        const q = Store.state.searchQuery.toLowerCase();
-        filteredEmployees = filteredEmployees.filter(e =>
-          e.name.toLowerCase().includes(q) || e.registration.toLowerCase().includes(q)
-        );
-      }
-
-      sortedBlocks.forEach(block => {
-        // Cabeçalho do Bloco
-        html += `<tr class="block-spacer"><td colspan="${4 + daysCount}">${escapeHTML(block.name.toUpperCase())}</td></tr>`;
-
-        const blockEmps = filteredEmployees.filter(e => e.blockId === block.id);
-
-        blockEmps.forEach(emp => {
-          html += `<tr>`;
-          html += `<td class="cell-name">${escapeHTML(emp.name)}</td>`;
-          html += `<td class="cell-mat">${escapeHTML(emp.registration)}</td>`;
-          
-          const escalaAttr = interactive ? `data-emp-id="${escapeHTML(emp.id)}" class="col-escala cursor-pointer"` : `class="col-escala"`;
-          html += `<td ${escalaAttr}>${escapeHTML(emp.rule)}</td>`;
-
-          // Células de Dias
-          for (let d = 1; d <= daysCount; d++) {
-            const cellData = ScheduleEngine.resolveCell(
-              emp, cfg.year, cfg.monthIndex, d,
-              cfg, Store.state.vacations, Store.state.manualOverrides, Store.state.overtime
-            );
-
-            let classes = [];
-            if (cellData.isYellow) classes.push('cell-feriado');
-            else if (ScheduleEngine.isWeekend(cfg.year, cfg.monthIndex, d)) classes.push('cell-weekend');
-
-            const cellAttr = interactive ? `data-emp-id="${escapeHTML(emp.id)}" data-day="${d}" class="${classes.join(' ')} interactive-cell"` : `class="${classes.join(' ')}"`;
-
-            html += `<td ${cellAttr}>`;
-            if (cellData.isOverride) {
-              html += `<div class="manual-override-marker"></div>`;
-            }
-            html += escapeHTML(cellData.text);
-            if (cellData.he) {
-              html += `<span class="he-indicator">${escapeHTML(cellData.he.customTag || 'HE')}</span>`;
-            }
-            html += `</td>`;
-          }
-
-          html += `<td></td>`; // Coluna Assistentes
-          html += `</tr>`;
-        });
-
-        // Desenhar Esqueleto de Linhas em Branco (.row-empty)
-        const emptyCount = cfg.emptyRowsPerBlock;
-        for (let i = 0; i < emptyCount; i++) {
-          html += `<tr class="row-empty">`;
-          html += `<td class="cell-name">&nbsp;</td>`;
-          html += `<td></td><td></td>`;
-          for (let d = 1; d <= daysCount; d++) {
-            const isWk = ScheduleEngine.isWeekend(cfg.year, cfg.monthIndex, d);
-            const isoDate = ScheduleEngine.formatDateISO(cfg.year, cfg.monthIndex, d);
-            const isHoliday = (cfg.holidays || []).includes(isoDate);
-
-            let cls = '';
-            if (isHoliday) cls = 'cell-feriado';
-            else if (isWk) cls = 'cell-weekend';
-
-            html += `<td class="${cls}"></td>`;
-          }
-          html += `<td></td>`;
-          html += `</tr>`;
-        }
-      });
-
-      html += `</table></div>`;
-      return html;
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 5. RENDERIZADORES DE INTERFACE E ABA
-  // --------------------------------------------------------------------------
-  const Renderer = {
-    renderAll() {
-      this.renderTopbar();
-      this.renderDashboard();
-      this.renderInteractiveGrid();
-      this.renderLivePreview();
-      this.renderEmployeesTable();
-      this.renderVacationsTable();
-      this.renderLayoutConfig();
-      this.renderReportsTable();
-      this.renderHelpTab();
-      this.renderAccountTab();
-    },
-
-    renderTopbar() {
-      const chip = document.getElementById('cloudStatusChip');
-      const text = document.getElementById('cloudStatusText');
-      if (chip && text) {
-        if (Store.state.isReadOnly) {
-          chip.setAttribute('data-status', 'offline');
-          text.textContent = 'Somente Leitura';
-        } else {
-          chip.setAttribute('data-status', 'local');
-          text.textContent = 'Modo Local';
-        }
-      }
-    },
-
-    renderDashboard() {
-      const totalEmp = Store.state.employees.length;
-      const kpiTotal = document.getElementById('kpiTotalEmp');
-      if (kpiTotal) kpiTotal.textContent = totalEmp;
-
-      const checklist = document.getElementById('initialChecklist');
-      if (checklist) {
-        checklist.hidden = totalEmp > 0;
-      }
-
-      const emptyEmployees = document.getElementById('employeesEmptyState');
-      if (emptyEmployees) emptyEmployees.hidden = totalEmp > 0;
-
-      const empTableWrap = document.getElementById('employeesTableWrapper');
-      if (empTableWrap) empTableWrap.hidden = totalEmp === 0;
-
-      // Render Canvas de Cobertura
-      this.renderCoverageChart();
-    },
-
-    renderCoverageChart() {
-      const canvas = document.getElementById('coverageChartCanvas');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const daysCount = ScheduleEngine.getDaysInMonth(Store.state.config.year, Store.state.config.monthIndex);
-
-      canvas.width = canvas.parentElement.clientWidth || 400;
-      canvas.height = 180;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const counts = [];
-      for (let d = 1; d <= daysCount; d++) {
-        let working = 0;
-        Store.state.employees.forEach(emp => {
-          const res = ScheduleEngine.resolveCell(
-            emp, Store.state.config.year, Store.state.config.monthIndex, d,
-            Store.state.config, Store.state.vacations, Store.state.manualOverrides, Store.state.overtime
-          );
-          if (res.status === 'T') working++;
-        });
-        counts.push(working);
-      }
-
-      // Desenhar Linhas de Histograma
-      const stepX = canvas.width / daysCount;
-      const maxVal = Math.max(...counts, Store.state.config.minCoverage, 5);
-
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
-      counts.forEach((val, i) => {
-        const h = (val / maxVal) * (canvas.height - 30);
-        const x = i * stepX;
-        const y = canvas.height - h - 20;
-
-        if (val < Store.state.config.minCoverage) ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
-        else ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
-
-        ctx.fillRect(x + 2, y, stepX - 4, h);
-      });
-
-      // Linha de Cobertura Mínima
-      const minY = canvas.height - ((Store.state.config.minCoverage / maxVal) * (canvas.height - 30)) - 20;
-      ctx.strokeStyle = '#ef4444';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(0, minY);
-      ctx.lineTo(canvas.width, minY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    },
-
-    renderInteractiveGrid() {
-      const shell = document.getElementById('interactiveGridShell');
-      if (!shell) return;
-      shell.innerHTML = SheetBuilder.buildHTML({ interactive: true });
-
-      // Atualizar legenda de mês no editor
-      const lblMonth = document.getElementById('editorCurrentMonthLbl');
-      if (lblMonth) {
-        const monthNames = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
-        lblMonth.textContent = `${monthNames[Store.state.config.monthIndex]} ${Store.state.config.year}`;
-      }
-    },
-
-    renderLivePreview() {
-      const previewBox = document.getElementById('livePreviewContainer');
-      if (!previewBox) return;
-      previewBox.innerHTML = SheetBuilder.buildHTML({ interactive: false });
-
-      // Aplicar Zoom
-      const container = previewBox.querySelector('.sheet-container');
-      if (container) {
-        container.style.transform = `scale(${Store.state.previewZoom})`;
-        container.style.transformOrigin = 'top center';
-      }
-    },
-
-    renderEmployeesTable() {
-      const tbody = document.getElementById('employeesTableBody');
-      if (!tbody) return;
-
-      tbody.innerHTML = Store.state.employees.map((emp, index) => {
-        const block = Store.state.blocks.find(b => b.id === emp.blockId);
-        return `
-          <tr>
-            <td>${index + 1}</td>
-            <td><strong>${escapeHTML(emp.name)}</strong></td>
-            <td class="cell-mat">${escapeHTML(emp.registration)}</td>
-            <td>${escapeHTML(block ? block.name : '-')}</td>
-            <td>${escapeHTML(emp.shiftHours || '08:00 - 17:00')}</td>
-            <td><span class="badge mono-badge">${escapeHTML(emp.rule)}</span></td>
-            <td>${escapeHTML(emp.cycleStartDate || '-')}</td>
-            <td style="text-align:right;">
-              <button type="button" class="btn btn-ghost btn-xs btn-edit-emp" data-id="${escapeHTML(emp.id)}">Editar</button>
-              <button type="button" class="btn btn-ghost btn-xs btn-del-emp" data-id="${escapeHTML(emp.id)}" style="color:var(--danger);">Excluir</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    },
-
-    renderVacationsTable() {
-      const tbody = document.getElementById('vacationsTableBody');
-      if (!tbody) return;
-
-      tbody.innerHTML = Store.state.vacations.map(vac => {
-        const emp = Store.state.employees.find(e => e.id === vac.employeeId);
-        const days = ScheduleEngine.daysBetween(ScheduleEngine.parseISODate(vac.startDate), ScheduleEngine.parseISODate(vac.endDate)) + 1;
-        return `
-          <tr>
-            <td><strong>${escapeHTML(emp ? emp.name : 'Desconhecido')}</strong></td>
-            <td>${escapeHTML(vac.startDate)}</td>
-            <td>${escapeHTML(vac.endDate)}</td>
-            <td>${days} dias</td>
-            <td><span class="badge badge-status ok">Agendado</span></td>
-            <td style="text-align:right;">
-              <button type="button" class="btn btn-ghost btn-xs btn-del-vac" data-id="${escapeHTML(vac.id)}" style="color:var(--danger);">Remover</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    },
-
-    renderLayoutConfig() {
-      const inputTitle = document.getElementById('cfgMainTitle');
-      if (inputTitle && document.activeElement !== inputTitle) inputTitle.value = Store.state.config.mainTitle;
-
-      const inputSub = document.getElementById('cfgSubtitle');
-      if (inputSub && document.activeElement !== inputSub) inputSub.value = Store.state.config.subtitle || '';
-
-      const inputEmptyRows = document.getElementById('cfgEmptyRowsPerBlock');
-      if (inputEmptyRows && document.activeElement !== inputEmptyRows) inputEmptyRows.value = Store.state.config.emptyRowsPerBlock;
-
-      // Atualizar seleção na Galeria
-      document.querySelectorAll('.layout-card').forEach(card => {
-        if (card.dataset.layoutId === Store.state.config.sheetLayout) card.classList.add('selected');
-        else card.classList.remove('selected');
-      });
-
-      // Renderizar Blocos
-      const blocksStack = document.getElementById('blocksStack');
-      if (blocksStack) {
-        blocksStack.innerHTML = Store.state.blocks.map(b => `
-          <div class="block-item" data-id="${escapeHTML(b.id)}">
-            <span><strong>${escapeHTML(b.name)}</strong></span>
-            <div class="btn-row">
-              <button type="button" class="btn btn-ghost btn-xs btn-rename-block" data-id="${escapeHTML(b.id)}">Renomear</button>
-              <button type="button" class="btn btn-ghost btn-xs btn-del-block" data-id="${escapeHTML(b.id)}" style="color:var(--danger);">Excluir</button>
-            </div>
-          </div>
-        `).join('');
-      }
-    },
-
-    renderReportsTable() {
-      const tbody = document.getElementById('reportsTableBody');
-      if (!tbody) return;
-
-      const daysCount = ScheduleEngine.getDaysInMonth(Store.state.config.year, Store.state.config.monthIndex);
-
-      tbody.innerHTML = Store.state.employees.map(emp => {
-        let worked = 0;
-        let off = 0;
-        let he50 = 0;
-        let he100 = 0;
-
-        for (let d = 1; d <= daysCount; d++) {
-          const cell = ScheduleEngine.resolveCell(
-            emp, Store.state.config.year, Store.state.config.monthIndex, d,
-            Store.state.config, Store.state.vacations, Store.state.manualOverrides, Store.state.overtime
-          );
-
-          if (cell.status === 'T') worked++;
-          else if (cell.status === 'F') off++;
-
-          if (cell.he) {
-            if (cell.he.type === '50') he50 += 2;
-            else if (cell.he.type === '100') he100 += 2;
-          }
-        }
-
-        return `
-          <tr>
-            <td><strong>${escapeHTML(emp.name)}</strong></td>
-            <td class="cell-mat">${escapeHTML(emp.registration)}</td>
-            <td>${worked}</td>
-            <td>${off}</td>
-            <td>${he50}h</td>
-            <td>${he100}h</td>
-            <td>0h</td>
-          </tr>
-        `;
-      }).join('');
-    },
-
-    renderHelpTab() {
-      const helpSteps = [
-        { title: '1. Login e Acesso', desc: 'Acesse via formulário seguro de e-mail/senha ou no Modo Local Offline.' },
-        { title: '2. Galeria de Layouts', desc: 'Escolha o visual oficial da planilha (Clássico, Compacto, Moderno, Alto Contraste ou Semanal).' },
-        { title: '3. Parâmetros e Titulação', desc: 'Configure o título, mês, número de linhas em branco e feriados nacionais.' },
-        { title: '4. Cadastro de Funcionários', desc: 'Adicione os membros da equipe associando a regra de escala desejada (6x1, 5x2, 12x36).' },
-        { title: '5. Pincéis e Edição Rápida', desc: 'Utilize os atalhos T, F, E e H para ajustar células interativamente na grade.' }
-      ];
-
-      const stepperNav = document.getElementById('helpStepperNav');
-      if (stepperNav && stepperNav.children.length === 0) {
-        stepperNav.innerHTML = helpSteps.map((s, i) => `
-          <div class="step-dot ${i === 0 ? 'active' : ''}" data-step="${i}">${i + 1}</div>
-        `).join('');
-      }
-
-      const cardContent = document.getElementById('helpStepContent');
-      if (cardContent && !cardContent.innerHTML) {
-        cardContent.innerHTML = `
-          <h3>1. Login e Acesso no FROTA.OS</h3>
-          <p style="margin-top:0.5rem;" class="text-muted-sm">Acesse o sistema garantindo sincronização e persistência dos dados da sua frota.</p>
-          <div class="step-figure" style="margin-top:1rem;">
-            <svg viewBox="0 0 400 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="400" height="150" rx="8" fill="#1e293b"/>
-              <rect x="20" y="20" width="160" height="110" rx="4" fill="#0f172a"/>
-              <circle cx="100" cy="50" r="15" fill="#10b981"/>
-              <rect x="50" y="80" width="100" height="8" rx="2" fill="#334155"/>
-              <rect x="200" y="20" width="180" height="110" rx="4" fill="#334155"/>
-            </svg>
-            <div class="callout-badge" style="top:30px; left:90px;">1</div>
-          </div>
-        `;
-      }
-    },
-
-    renderAccountTab() {
-      const emailLbl = document.getElementById('lblAccountEmail');
-      if (emailLbl) {
-        emailLbl.textContent = (window.AuthManager && window.AuthManager.currentUser)
-          ? window.AuthManager.currentUser.email
-          : 'Modo Local (Não Autenticado)';
-      }
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 6. ATRIBUIÇÃO DE EVENTOS E INTERAÇÃO DA GRADE
-  // --------------------------------------------------------------------------
-  function setupEventListeners() {
-    // Alternar Abas da Sidebar
-    document.querySelectorAll('.nav-item[data-tab]').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.preventDefault();
-        const tabTarget = item.dataset.tab;
-        Store.state.activeTab = tabTarget;
-
-        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-
-        document.querySelectorAll('.tab-content').forEach(tc => tc.hidden = true);
-        const targetSection = document.getElementById(tabTarget);
-        if (targetSection) targetSection.hidden = false;
-
-        Renderer.renderAll();
-      });
-    });
-
-    // Pincéis de Edição
-    document.querySelectorAll('.brush-btn[data-brush]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        Store.state.activeBrush = btn.dataset.brush;
-      });
-    });
-
-    // Clique em Célula da Grade Interativa
-    const gridShell = document.getElementById('interactiveGridShell');
-    if (gridShell) {
-      gridShell.addEventListener('click', (e) => {
-        if (Store.state.isReadOnly) return;
-
-        const td = e.target.closest('.interactive-cell');
-        if (!td) return;
-
-        const empId = td.dataset.empId;
-        const day = parseInt(td.dataset.day, 10);
-        if (!empId || !day) return;
-
-        const isoDate = ScheduleEngine.formatDateISO(Store.state.config.year, Store.state.config.monthIndex, day);
-        const brush = Store.state.activeBrush;
-        const key = `${empId}_${isoDate}`;
-
-        Store.snapshot();
-
-        if (brush === 'T') Store.state.manualOverrides[key] = { status: 'T' };
-        else if (brush === 'F') Store.state.manualOverrides[key] = { status: 'F' };
-        else if (brush === 'FER') Store.state.manualOverrides[key] = { status: 'FER' };
-        else if (brush === 'AF') Store.state.manualOverrides[key] = { status: 'AF' };
-        else if (brush === 'AUTO') delete Store.state.manualOverrides[key];
-        else if (brush === 'HE') {
-          openHEModal(empId, day);
-          return;
-        }
-
-        Store.notify();
-        Renderer.renderInteractiveGrid();
-        Renderer.renderLivePreview();
-        Renderer.renderDashboard();
-      });
-    }
-
-    // Atalhos de Teclado
-    window.addEventListener('keydown', (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-
-      if (e.key === 't' || e.key === 'T') setBrush('T');
-      if (e.key === 'f' || e.key === 'F') setBrush('F');
-      if (e.key === 'e' || e.key === 'E') setBrush('FER');
-      if (e.key === 'y' || e.key === 'Y') setBrush('AUTO');
-      if (e.key === 'h' || e.key === 'H') setBrush('HE');
-
-      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); Store.undo(); }
-      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); Store.redo(); }
-    });
-
-    // Galeria de Layouts
-    const gallery = document.getElementById('layoutGallery');
-    if (gallery) {
-      gallery.addEventListener('click', (e) => {
-        const card = e.target.closest('.layout-card');
-        if (!card) return;
-        const layoutId = card.dataset.layoutId;
-        if (LAYOUTS[layoutId]) {
-          Store.state.config.sheetLayout = layoutId;
-          Store.notify();
-          Renderer.renderLayoutConfig();
-          Renderer.renderInteractiveGrid();
-          Renderer.renderLivePreview();
-        }
-      });
-    }
-
-    // Configuração de Parâmetros
-    const inputTitle = document.getElementById('cfgMainTitle');
-    if (inputTitle) {
-      inputTitle.addEventListener('input', (e) => {
-        Store.state.config.mainTitle = e.target.value;
-        Store.saveLocal();
-        Renderer.renderInteractiveGrid();
-        Renderer.renderLivePreview();
-      });
-    }
-
-    const inputSub = document.getElementById('cfgSubtitle');
-    if (inputSub) {
-      inputSub.addEventListener('input', (e) => {
-        Store.state.config.subtitle = e.target.value;
-        Store.saveLocal();
-        Renderer.renderInteractiveGrid();
-        Renderer.renderLivePreview();
-      });
-    }
-
-    // Botão Limpar Tudo (com Modal de confirmação/backup)
-    const btnWipe = document.getElementById('btnWipeAllData');
-    if (btnWipe) {
-      btnWipe.addEventListener('click', () => {
-        if (confirm('Deseja limpar todos os funcionários, férias e ajustes? Os parâmetros de layout serão mantidos.')) {
-          Store.wipeAllData();
-          Renderer.renderAll();
-        }
-      });
-    }
+        const c = await window.html2canvas(host.firstChild, {scale:2, backgroundColor:'#fff'});
+        const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `Escala_${Store.state.config.year}.png`; a.click();
+      } finally { host.remove(); this.toast('Concluído!'); }
+    };
   }
+};
 
-  function setBrush(brushName) {
-    Store.state.activeBrush = brushName;
-    document.querySelectorAll('.brush-btn').forEach(b => {
-      if (b.dataset.brush === brushName) b.classList.add('active');
-      else b.classList.remove('active');
-    });
-  }
-
-  function openHEModal(empId, day) {
-    const modal = document.getElementById('heModal');
-    if (!modal) return;
-    document.getElementById('heEmpId').value = empId;
-    document.getElementById('heDay').value = day;
-    modal.removeAttribute('hidden');
-  }
-
-  // --------------------------------------------------------------------------
-  // 7. INICIALIZAÇÃO
-  // --------------------------------------------------------------------------
-  document.addEventListener('DOMContentLoaded', () => {
-    Store.init();
-    setupEventListeners();
-    Renderer.renderAll();
-  });
-
-  // Exportar Store globalmente para testes
-  window.Store = Store;
-  window.ScheduleEngine = ScheduleEngine;
-  window.SheetBuilder = SheetBuilder;
-  window.Renderer = Renderer;
-
-})();
+window.UI = UI; // Expor globalmente para os botões inline do HTML
+document.addEventListener('DOMContentLoaded', () => { Store.init(); UI.bind(); Renderer.renderAll(); });

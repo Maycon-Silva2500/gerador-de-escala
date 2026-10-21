@@ -1,5 +1,4 @@
 // firebase-config.js
-
 const firebaseConfig = {
   apiKey: "AIzaSyDuTH740TZq-uKKjmZUL12XVH5nJkt370Y",
   authDomain: "frota-os.firebaseapp.com",
@@ -10,7 +9,6 @@ const firebaseConfig = {
   measurementId: "G-CN7FC83HS8"
 };
 
-// Inicialização segura para o FROTA.OS (Sem precisar de NPM)
 if (typeof firebase !== 'undefined') {
   if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
