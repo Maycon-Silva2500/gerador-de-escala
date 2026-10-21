@@ -4,730 +4,405 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FROTA.OS // Criador de Escala & Monitoramento</title>
-  <!-- Fontes -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   
-  <!-- Dependências Externas (Exportação e Firebase Local-First) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
   
-  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js" defer></script>
   
-  <!-- NOVO: Ficheiro de Configuração do Firebase -->
+  <!-- ARQUIVOS MODULARES DO SISTEMA -->
   <script src="firebase-config.js" defer></script>
+  <script src="auth.js" defer></script> <!-- NOVO MÓDULO DE LOGIN -->
 </head>
 <body>
-  <div class="app-shell" id="appShell">
-    <!-- SIDEBAR RECOLHÍVEL -->
-    <aside class="sidebar" id="sidebar" aria-label="Menu Principal">
-      <div class="sidebar-header">
-        <div class="brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-title">FROTA<span class="neon-dot">.OS</span></span>
-          <span class="brand-sub">Escala Inteligente v4.1</span>
-        </div>
+
+  <!-- TELA DE LOGIN FULLSCREEN (SEMPRE ATIVA AO ENTRAR NO SITE) -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-glass-card">
+      <div class="login-logo">
+        <svg viewBox="0 0 24 24" width="40" height="40" stroke="var(--neon-primary)" stroke-width="2.5" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
       </div>
+      <h2>FROTA<span class="neon-dot">.OS</span></h2>
+      <p>Autenticação de Segurança Obrigatória</p>
 
-      <nav class="sidebar-nav" role="navigation">
-        <button type="button" class="nav-item active" data-tab="dashboard" title="Dashboard e Alertas">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-          <span class="nav-label">Dashboard</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="escala" title="Montar Escala Mensal">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
-          <span class="nav-label">Montar Escala</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="funcionarios" title="Cadastro de Funcionários">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span class="nav-label">Funcionários</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="blocos" title="Blocos, Turnos e Período">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span class="nav-label">Turnos &amp; Mês</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="ferias" title="Férias e Afastamentos">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-          <span class="nav-label">Férias &amp; Licenças</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="relatorios" title="Relatórios por Funcionário e Turno">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span class="nav-label">Relatórios (HE)</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="exportar" title="Exportar PNG, PDF, Impressão e CSV">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span class="nav-label">Exportar Escala</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="config" title="Configurações Visuais e Backup JSON">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span class="nav-label">Config &amp; Backup</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="conta" title="Sincronização Firebase & Conta">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/></svg>
-          <span class="nav-label">Conta &amp; Nuvem</span>
-        </button>
-
-        <button type="button" class="nav-item" data-tab="ajuda" title="Guia Passo a Passo de Como Usar">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span class="nav-label">Ajuda &amp; Passo a Passo</span>
-        </button>
-      </nav>
-
-      <div class="sidebar-footer">
-        <button type="button" class="btn btn-neon btn-full" id="btnSidebarGeneratePng">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span class="nav-label">GERAR IMAGEM</span>
-        </button>
-        <div class="storage-status" id="storageStatusBadge" title="Salvo automaticamente">
-          <span class="status-dot"></span>
-          <span class="nav-label">Auto-Save Ativo</span>
+      <form id="formLoginScreen" class="login-form">
+        <div class="form-field">
+          <label>E-mail de Acesso</label>
+          <input type="email" id="loginEmail" required placeholder="Digite o seu e-mail">
         </div>
+        <div class="form-field">
+          <label>Palavra-passe</label>
+          <input type="password" id="loginPass" required placeholder="Digite a palavra-passe">
+        </div>
+        <div class="login-actions">
+          <button type="button" class="btn btn-neon btn-full" id="btnOverlayLogin">Iniciar Sessão</button>
+          <button type="button" class="btn btn-outline btn-full" id="btnOverlayRegister">Criar Nova Conta</button>
+        </div>
+        <div class="login-footer">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnOverlayOffline" title="Acede aos dados locais sem guardar na nuvem.">Trabalhar em Modo Offline (Local)</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo"><svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <div class="brand-text"><span class="brand-title">FROTA<span class="neon-dot">.OS</span></span><span class="brand-sub">Escala Inteligente v4.5</span></div>
+      </div>
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-tab="dashboard"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span class="nav-label">Dashboard</span></button>
+        <button type="button" class="nav-item" data-tab="escala"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg><span class="nav-label">Montar Escala</span></button>
+        <button type="button" class="nav-item" data-tab="funcionarios"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label">Funcionários</span></button>
+        <button type="button" class="nav-item" data-tab="blocos"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="nav-label">Turnos &amp; Mês</span></button>
+        <button type="button" class="nav-item" data-tab="ferias"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg><span class="nav-label">Férias &amp; Licenças</span></button>
+        <button type="button" class="nav-item" data-tab="relatorios"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="nav-label">Relatórios (HE)</span></button>
+        <button type="button" class="nav-item" data-tab="exportar"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span class="nav-label">Exportar Escala</span></button>
+        <button type="button" class="nav-item" data-tab="config"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label">Config &amp; Backup</span></button>
+        <button type="button" class="nav-item" data-tab="conta"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/></svg><span class="nav-label">Conta &amp; Nuvem</span></button>
+        <button type="button" class="nav-item" data-tab="ajuda"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="nav-label">Ajuda &amp; Passo a Passo</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <button type="button" class="btn btn-neon btn-full" id="btnSidebarGeneratePng"><span class="nav-label">GERAR IMAGEM</span></button>
+        <div class="storage-status" id="storageStatusBadge"><span class="status-dot"></span><span class="nav-label">Auto-Save Ativo</span></div>
       </div>
     </aside>
 
-    <!-- ÁREA CENTRAL -->
     <div class="main-container">
-      <!-- TOPBAR -->
       <header class="topbar">
         <div class="topbar-group">
-          <button type="button" class="btn-icon" id="btnToggleSidebar" aria-label="Recolher ou expandir menu lateral" title="Alternar Menu">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </button>
-
+          <button type="button" class="btn-icon" id="btnToggleSidebar"><svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
           <div class="period-pill">
-            <button type="button" class="btn-icon-sm" id="btnPrevMonth" title="Mês Anterior">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <select id="topMonthSelect" aria-label="Selecionar Mês"></select>
-            <input type="number" id="topYearInput" min="2020" max="2060" step="1" aria-label="Selecionar Ano">
-            <button type="button" class="btn-icon-sm" id="btnNextMonth" title="Próximo Mês">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
+            <button type="button" class="btn-icon-sm" id="btnPrevMonth"><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <select id="topMonthSelect"></select>
+            <input type="number" id="topYearInput" min="2020" max="2060">
+            <button type="button" class="btn-icon-sm" id="btnNextMonth"><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
-
-          <div class="search-field">
-            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="search" id="globalSearchInput" placeholder="Filtrar nome ou matrícula (apenas tela)..." aria-label="Buscar funcionário">
-          </div>
+          <div class="search-field"><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="search" id="globalSearchInput" placeholder="Filtrar funcionário..."></div>
         </div>
-
         <div class="topbar-group">
           <div class="history-controls">
-            <button type="button" class="btn btn-ghost btn-sm" id="btnUndo" disabled title="Desfazer (Ctrl+Z)" aria-label="Desfazer">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
-              <span id="undoCountBadge">0</span>
-            </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="btnRedo" disabled title="Refazer (Ctrl+Y)" aria-label="Refazer">
-              <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
-              <span id="redoCountBadge">0</span>
-            </button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnUndo" disabled><span id="undoCountBadge">0</span></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnRedo" disabled><span id="redoCountBadge">0</span></button>
           </div>
-
-          <button type="button" class="btn btn-ghost btn-sm" id="btnRecalculate" title="Recalcular ciclo automático do mês">
-            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            <span>Recalcular</span>
-          </button>
-
-          <!-- CHIP CLOUD SYNC -->
-          <span class="mono-badge" id="topCloudStatus" style="cursor:help;" title="Status de Sincronização e Login">☁️ Local</span>
-
-          <button type="button" class="btn btn-ghost btn-sm" id="btnTogglePreviewPane" title="Alternar modo de tela dividida">
-            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
-            <span>Prévia Ao Vivo</span>
-          </button>
-
-          <button type="button" class="btn-icon" id="btnThemeToggle" title="Alternar Tema Escuro / Claro" aria-label="Alternar tema">
-            <svg viewBox="0 0 24 24" width="17" height="17" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-          </button>
+          <span class="mono-badge" id="topCloudStatus">☁️ Aguardando...</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnTogglePreviewPane">Prévia Ao Vivo</button>
+          <button type="button" class="btn-icon" id="btnThemeToggle"><svg viewBox="0 0 24 24" width="17" height="17" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="5"/></svg></button>
         </div>
       </header>
 
-      <!-- WORKSPACE DIVIDIDO -->
       <div class="workspace-split" id="workspaceSplit">
         <main class="editor-pane" id="editorPane">
-
-          <!-- ABA 1: DASHBOARD -->
-          <section class="tab-panel active" id="tab-dashboard" aria-label="Dashboard">
-            <div class="panel-header">
-              <div>
-                <h2>Telemetria &amp; Cobertura da Escala</h2>
-                <p>Indicadores em tempo real, gráfico diário de efetivo, mapa de calor por turno e alertas clicáveis.</p>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn btn-outline btn-sm" data-switch-tab="ajuda">Passo a Passo (Ajuda)</button>
-                <button type="button" class="btn btn-outline btn-sm" data-switch-tab="funcionarios">+ Funcionário</button>
-                <button type="button" class="btn btn-neon btn-sm" data-switch-tab="escala">Editar Grade</button>
-              </div>
-            </div>
-
+          
+          <!-- DASHBOARD -->
+          <section class="tab-panel active" id="tab-dashboard">
+            <div class="panel-header"><div><h2>Dashboard de Cobertura</h2></div></div>
             <div class="kpi-grid" id="dashboardKpis"></div>
-
             <div class="dash-grid-2">
-              <div class="glass-card">
-                <div class="card-head">
-                  <h3>Trabalhando vs. Folga por Dia</h3>
-                  <span class="mono-badge" id="chartMinCovLabel">Mín: 4</span>
-                </div>
-                <div class="chart-wrap">
-                  <canvas id="dailyCoverageCanvas" width="680" height="210" aria-label="Gráfico de cobertura diária"></canvas>
-                </div>
-              </div>
-
-              <div class="glass-card">
-                <div class="card-head">
-                  <h3>Alertas Operacionais &amp; Validação</h3>
-                  <span class="mono-badge" id="alertsCountBadge">0</span>
-                </div>
-                <ul class="alerts-list" id="dashboardAlertsList"></ul>
-              </div>
+              <div class="glass-card"><div class="chart-wrap"><canvas id="dailyCoverageCanvas" width="680" height="210"></canvas></div></div>
+              <div class="glass-card"><ul class="alerts-list" id="dashboardAlertsList"></ul></div>
             </div>
-
-            <div class="glass-card mt-14">
-              <div class="card-head">
-                <h3>Mapa de Calor de Cobertura (Turno × Dia do Mês)</h3>
-                <span class="text-muted-sm">Clique em qualquer célula para inspecionar na escala</span>
-              </div>
-              <div class="heatmap-scroll" id="coverageHeatmapContainer"></div>
-            </div>
+            <div class="glass-card mt-14"><div class="heatmap-scroll" id="coverageHeatmapContainer"></div></div>
           </section>
 
-          <!-- ABA 2: MONTAR ESCALA MENSAL -->
-          <section class="tab-panel" id="tab-escala" aria-label="Montar Escala Mensal">
+          <!-- ESCALA -->
+          <section class="tab-panel" id="tab-escala">
             <div class="panel-header">
-              <div>
-                <h2>Editor Interativo de Escala &amp; Horas Extras</h2>
-                <p>Arraste para pintar ou mover folgas (Mover folga = Shift+Arrastar). Use a barra contextual ao selecionar várias células.</p>
-              </div>
+              <div><h2>Editor de Escala & HE</h2><p>Shift+Arraste para mover folgas. Botão direito p/ menu de regra.</p></div>
               <div class="btn-row">
-                <select id="sheetSortSelect" class="input-sm" aria-label="Ordenação da escala">
-                  <option value="custom">Ordem Manual do Bloco</option>
-                  <option value="entryTime">Horário de Entrada (Peg.)</option>
-                  <option value="name">Nome (A-Z)</option>
-                  <option value="matricula">Matrícula</option>
-                </select>
-                <button type="button" class="btn btn-outline btn-sm" id="btnCopyRow" title="Copiar ajustes da linha selecionada (Ctrl+C)">Copiar Linha</button>
-                <button type="button" class="btn btn-outline btn-sm" id="btnPasteRow" disabled title="Colar ajustes na linha selecionada (Ctrl+V)">Colar Linha</button>
-                <button type="button" class="btn btn-danger btn-sm" id="btnResetMonthOverrides">Limpar Ajustes do Mês</button>
+                <select id="sheetSortSelect" class="input-sm"><option value="custom">Ordem Bloco</option><option value="entryTime">Entrada</option><option value="name">Nome</option></select>
+                <button type="button" class="btn btn-outline btn-sm" id="btnCopyRow">Copiar Linha</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnPasteRow" disabled>Colar Linha</button>
+                <button type="button" class="btn btn-danger btn-sm" id="btnResetMonthOverrides">Limpar Mês</button>
               </div>
             </div>
-
-            <!-- Barra de Pincel e Atalhos -->
             <div class="glass-card brush-toolbar mb-14">
               <div class="brush-group">
-                <span class="toolbar-label">Ferramenta Rápida:</span>
-                <div class="brush-pills" id="brushSelector" role="radiogroup" aria-label="Modo Pincel">
-                  <button type="button" class="brush-btn" data-brush="T" title="Trabalho (T)">Trab (T)</button>
-                  <button type="button" class="brush-btn active" data-brush="F" title="Folga (F)">Folga (F)</button>
-                  <button type="button" class="brush-btn brush-yellow" data-brush="F_YELLOW" title="Folga com fundo Amarelo (Y)">Folga (Y)</button>
-                  <button type="button" class="brush-btn" data-brush="FE" title="Feriado (E)">Feriado (E)</button>
-                  <button type="button" class="brush-btn" data-brush="HE" title="Hora Extra (H) - Lança HE rápida baseada no tempo líquido">Hora Extra (H)</button>
-                  <button type="button" class="brush-btn" data-brush="FER" title="Férias (V)">Férias (V)</button>
-                  <button type="button" class="brush-btn" data-brush="AF" title="Afastado (L)">Afastado (L)</button>
-                  <button type="button" class="brush-btn" data-brush="AUTO" title="Automático (A) - Restaura a regra do ciclo">Automático (A)</button>
+                <div class="brush-pills" id="brushSelector">
+                  <button type="button" class="brush-btn" data-brush="T">Trab (T)</button>
+                  <button type="button" class="brush-btn active" data-brush="F">Folga (F)</button>
+                  <button type="button" class="brush-btn brush-yellow" data-brush="F_YELLOW">Folga (Y)</button>
+                  <button type="button" class="brush-btn" data-brush="FE">Feriado (E)</button>
+                  <button type="button" class="brush-btn" data-brush="HE">Hora Extra (H)</button>
+                  <button type="button" class="brush-btn" data-brush="FER">Férias (V)</button>
+                  <button type="button" class="brush-btn" data-brush="AF">Afastado (L)</button>
+                  <button type="button" class="brush-btn" data-brush="AUTO">Auto (A)</button>
                 </div>
               </div>
-
-              <!-- BARRA DE AÇÃO CONTEXTUAL (Aparece ao selecionar múltiplas células) -->
               <div class="context-action-bar" id="contextActionBar" hidden>
-                <span class="toolbar-label" style="color:var(--neon-primary)">Múltiplas Selecionadas:</span>
+                <span class="toolbar-label" style="color:var(--neon-primary)">Multi-Seleção:</span>
                 <button type="button" class="btn btn-neon btn-xs" id="btnContextApplyBrush">Aplicar Ferramenta</button>
-                <button type="button" class="btn btn-outline btn-xs" id="btnContextClear">Limpar (Auto)</button>
-                <button type="button" class="btn btn-outline btn-xs" id="btnContextCopyBlock">Copiar Bloco</button>
-                <button type="button" class="btn btn-outline btn-xs" id="btnContextPasteBlock" disabled>Colar Bloco</button>
+                <button type="button" class="btn btn-outline btn-xs" id="btnContextClear">Limpar Seleção</button>
               </div>
-
               <div class="brush-options mt-12">
-                <label class="switch-label"><input type="checkbox" id="chkShowWorkSymbol"><span>Mostrar "<strong id="lblWorkSym">T</strong>" no Trabalho</span></label>
-                <label class="switch-label"><input type="checkbox" id="chkShowWeekdayRow"><span>Mostrar linha de Dias da Semana</span></label>
-                <label class="switch-label"><input type="checkbox" id="chkShowHESheet"><span>Exibir Horas Extras (HE) na Planilha Oficial</span></label>
-                <span class="kbd-hint">Ações: <kbd>Shift+Arraste a Folga</kbd> Mover Folga · <kbd>Duplo Clique</kbd> Modal · <kbd>Ctrl+D</kbd> Preencher à dir.</span>
+                <label class="switch-label"><input type="checkbox" id="chkShowWorkSymbol"><span>Mostrar T</span></label>
+                <label class="switch-label"><input type="checkbox" id="chkShowWeekdayRow"><span>Mostrar Dias</span></label>
+                <label class="switch-label"><input type="checkbox" id="chkShowHESheet"><span>Exibir HE no PNG</span></label>
               </div>
             </div>
-
-            <!-- Grade Interativa Principal -->
             <div class="interactive-grid-shell" id="editorGridContainer"></div>
           </section>
 
-          <!-- ABA 3: FUNCIONÁRIOS -->
-          <section class="tab-panel" id="tab-funcionarios" aria-label="Cadastro de Funcionários">
-            <div class="panel-header">
-              <div>
-                <h2>Gestão de Efetivo (<span id="empTotalCount">0</span>)</h2>
-                <p>Arraste as linhas para reordenar dentro do bloco ou mover entre turnos. Matrículas são validadas como únicas.</p>
-              </div>
-              <div class="btn-row">
-                <select id="filterEmpBlock" class="input-sm" aria-label="Filtrar por bloco">
-                  <option value="ALL">Todos os Turnos/Blocos</option>
-                </select>
-                <select id="filterEmpStatus" class="input-sm" aria-label="Filtrar por status">
-                  <option value="ALL">Todos os Status</option>
-                  <option value="ativo">Ativos</option>
-                  <option value="ferias">Em Férias</option>
-                  <option value="afastado">Afastados</option>
-                </select>
-                <button type="button" class="btn btn-neon btn-sm" id="btnNewEmployee">+ Novo Funcionário</button>
-              </div>
-            </div>
-
+          <!-- FUNCIONARIOS -->
+          <section class="tab-panel" id="tab-funcionarios">
+            <div class="panel-header"><div><h2>Efetivo (<span id="empTotalCount">0</span>)</h2></div><div class="btn-row"><button type="button" class="btn btn-neon btn-sm" id="btnNewEmployee">+ Funcionário</button></div></div>
             <div class="glass-card overflow-x">
-              <table class="modern-table" id="employeesTable">
-                <thead>
-                  <tr>
-                    <th width="36">Ord.</th>
-                    <th>Matrícula</th>
-                    <th>Funcionário</th>
-                    <th>Horário(s)</th>
-                    <th>Bloco / Turno</th>
-                    <th>Escala / Regra</th>
-                    <th>Início Ciclo</th>
-                    <th>Status</th>
-                    <th width="160">Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="employeesTableBody"></tbody>
-              </table>
+              <table class="modern-table"><thead><tr><th>Matrícula</th><th>Funcionário</th><th>Horário</th><th>Bloco</th><th>Escala</th><th>Início Ciclo</th><th>Status</th><th>Ações</th></tr></thead><tbody id="employeesTableBody"></tbody></table>
             </div>
           </section>
 
-          <!-- ABA 4: BLOCOS E MÊS -->
-          <section class="tab-panel" id="tab-blocos" aria-label="Turnos e Mês">
-            <div class="panel-header">
-              <div>
-                <h2>Configuração do Período, Feriados &amp; Turnos</h2>
-                <p>Personalize cabeçalhos da planilha, feriados (nacionais + móveis de Páscoa + locais) e blocos de equipes.</p>
-              </div>
-            </div>
-
+          <!-- BLOCOS E MÊS -->
+          <section class="tab-panel" id="tab-blocos">
+            <div class="panel-header"><h2>Período & Turnos</h2></div>
             <div class="dash-grid-2">
               <div class="glass-card">
-                <div class="card-head">
-                  <h3>Parâmetros do Mês &amp; Feriados</h3>
-                  <button type="button" class="btn btn-ghost btn-xs" id="btnAutoFillHolidays" title="Preenche feriados nacionais fixos e móveis da Páscoa para este mês">Sugerir Feriados do Mês</button>
-                </div>
                 <form id="formMonthParams" class="form-grid">
-                  <div class="form-field"><label for="cfgSectorTitle">Título Principal da Planilha</label><input type="text" id="cfgSectorTitle" required></div>
-                  <div class="form-field"><label for="cfgLeftBadge">Selo Lateral Esquerdo</label><input type="text" id="cfgLeftBadge" required></div>
-                  <div class="form-field"><label for="cfgCustomSubtitle">Subtítulo Personalizado (vazio = automático)</label><input type="text" id="cfgCustomSubtitle"></div>
-                  <div class="form-field"><label for="cfgMinCoverage">Cobertura Mínima Total Diária</label><input type="number" id="cfgMinCoverage" min="0" max="500"></div>
-                  <div class="form-field"><label for="cfgPeriodStart">Dia Inicial do Período</label><input type="number" id="cfgPeriodStart" min="1" max="31"></div>
-                  <div class="form-field"><label for="cfgPeriodEnd">Dia Final (0 = Último dia do mês)</label><input type="number" id="cfgPeriodEnd" min="0" max="31"></div>
-                  <div class="form-field span-2">
-                    <label for="cfgHolidaysInput">Dias com Destaque Amarelo / Feriados no Mês (separados por vírgula)</label>
-                    <input type="text" id="cfgHolidaysInput" placeholder="Ex: 2, 20">
-                    <small class="field-help" id="movableHolidaysHint"></small>
-                  </div>
-                  <div class="form-field span-2"><label class="switch-label"><input type="checkbox" id="cfgHighlightAllOffYellow"><span>Destacar TODAS as folgas ("F") em amarelo (além dos feriados do mês)</span></label></div>
-                  <div class="form-field span-2"><label class="switch-label"><input type="checkbox" id="cfgRepeatHeaderGlobal"><span>Permitir repetição de cabeçalho (Peg., Larg., Matrícula...) entre blocos</span></label></div>
-                  <div class="form-field span-2"><button type="submit" class="btn btn-neon">Aplicar Configurações do Período</button></div>
+                  <div class="form-field"><label>Título</label><input type="text" id="cfgSectorTitle"></div>
+                  <div class="form-field"><label>Selo</label><input type="text" id="cfgLeftBadge"></div>
+                  <div class="form-field"><label>Feriados do Mês</label><input type="text" id="cfgHolidaysInput"><button type="button" id="btnAutoFillHolidays" class="btn btn-ghost btn-xs">Sugerir</button></div>
+                  <div class="form-field"><button type="submit" class="btn btn-neon">Aplicar</button></div>
                 </form>
               </div>
-
               <div class="glass-card">
-                <div class="card-head">
-                  <h3>Blocos / Turnos da Planilha</h3>
-                  <button type="button" class="btn btn-neon btn-xs" id="btnAddBlock">+ Novo Bloco</button>
-                </div>
-                <p class="text-muted-sm mb-12">Configure a ordem dos turnos, cobertura mínima por turno, linha espaçadora e repetição de cabeçalho.</p>
+                <div class="card-head"><h3>Turnos</h3><button type="button" class="btn btn-neon btn-xs" id="btnAddBlock">+ Bloco</button></div>
                 <div id="blocksListContainer" class="blocks-stack"></div>
-                <button type="button" class="btn btn-outline btn-full mt-14" id="btnBalanceWeekends">⚖️ Balancear Finais de Semana (S/D)</button>
               </div>
             </div>
           </section>
 
-          <!-- ABA 5: FÉRIAS E AFASTAMENTOS -->
-          <section class="tab-panel" id="tab-ferias" aria-label="Férias e Afastamentos">
-            <div class="panel-header">
-              <div>
-                <h2>Controle de Férias &amp; Afastamentos</h2>
-                <p>Validação automática contra sobreposição de datas para o mesmo funcionário.</p>
-              </div>
-            </div>
-
+          <!-- FERIAS -->
+          <section class="tab-panel" id="tab-ferias">
+            <div class="panel-header"><h2>Férias & Afastamentos</h2></div>
             <div class="dash-grid-2">
               <div class="glass-card">
-                <div class="card-head">
-                  <h3 id="vacFormTitle">Registrar Férias ou Afastamento</h3>
-                </div>
                 <form id="formVacation" class="form-grid">
                   <input type="hidden" id="vacIdInput">
-                  <div class="form-field span-2"><label for="vacEmpSelect">Funcionário</label><select id="vacEmpSelect" required></select></div>
-                  <div class="form-field"><label for="vacTypeSelect">Tipo</label><select id="vacTypeSelect" required><option value="FERIAS">Férias Regulamentares</option><option value="AFASTAMENTO">Afastamento / INSS</option><option value="LICENCA">Licença Remunerada</option></select></div>
-                  <div class="form-field"><label for="vacDisplaySelect">Exibição na Planilha</label><select id="vacDisplaySelect"><option value="footer_bar">Faixa "FÉRIAS" no rodapé</option><option value="inline_days">Células "FER/AF" nos dias da linha</option><option value="both">Ambos (Linha + Faixa no rodapé)</option></select></div>
-                  <div class="form-field"><label for="vacStartInput">Data Inicial</label><input type="date" id="vacStartInput" required></div>
-                  <div class="form-field"><label for="vacEndInput">Data Final</label><input type="date" id="vacEndInput" required></div>
-                  <div class="form-field span-2"><label for="vacNotesInput">Observações</label><input type="text" id="vacNotesInput" placeholder="Ex: Período aquisitivo 2025/2026"></div>
-                  <div class="form-field span-2 btn-row"><button type="submit" class="btn btn-neon">Salvar Período</button><button type="button" class="btn btn-ghost" id="btnCancelVacEdit" hidden>Cancelar Edição</button></div>
+                  <div class="form-field span-2"><label>Funcionário</label><select id="vacEmpSelect"></select></div>
+                  <div class="form-field"><label>Tipo</label><select id="vacTypeSelect"><option value="FERIAS">Férias</option><option value="AFASTAMENTO">Afastamento</option></select></div>
+                  <div class="form-field"><label>Exibição</label><select id="vacDisplaySelect"><option value="footer_bar">Rodapé</option><option value="inline_days">Na linha</option></select></div>
+                  <div class="form-field"><label>Início</label><input type="date" id="vacStartInput"></div>
+                  <div class="form-field"><label>Fim</label><input type="date" id="vacEndInput"></div>
+                  <div class="form-field span-2 btn-row"><button type="submit" class="btn btn-neon">Salvar</button><button type="button" class="btn btn-ghost" id="btnCancelVacEdit" hidden>Cancelar</button></div>
                 </form>
               </div>
-
               <div class="glass-card overflow-x">
-                <div class="card-head"><h3>Registros Ativos</h3></div>
-                <table class="modern-table">
-                  <thead><tr><th>Funcionário</th><th>Tipo</th><th>Início / Fim</th><th>Exibição</th><th>Ações</th></tr></thead>
-                  <tbody id="vacationsTableBody"></tbody>
-                </table>
+                <table class="modern-table"><thead><tr><th>Funcionário</th><th>Tipo</th><th>Período</th><th>Exibição</th><th>Ações</th></tr></thead><tbody id="vacationsTableBody"></tbody></table>
               </div>
             </div>
           </section>
 
-          <!-- ABA 6: RELATÓRIOS -->
-          <section class="tab-panel" id="tab-relatorios" aria-label="Relatórios">
-            <div class="panel-header">
-              <div>
-                <h2>Relatórios de Carga Horária &amp; Horas Extras (HE)</h2>
-                <p>Cálculo preciso de jornadas que cruzam a meia-noite, dupla pegada e desconto de intervalos.</p>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn btn-neon btn-sm" id="btnExportReportCsv">Exportar Relatório em CSV (;)</button>
-              </div>
-            </div>
-
-            <div class="glass-card mb-14 overflow-x">
-              <div class="card-head"><h3>Resumo Consolidado por Bloco / Turno</h3></div>
-              <table class="modern-table">
-                <thead><tr><th>Bloco / Turno</th><th>Efetivo Ativo</th><th>Mínimo Exigido</th><th>Média Trabalhando/Dia</th><th>Menor Cobertura</th><th>Total Base</th><th>Total HE (h)</th></tr></thead>
-                <tbody id="reportBlocksBody"></tbody>
-              </table>
-            </div>
-
-            <div class="glass-card overflow-x">
-              <div class="card-head"><h3>Detalhamento Individual por Funcionário</h3></div>
-              <table class="modern-table">
-                <thead><tr><th>Matrícula</th><th>Funcionário</th><th>Horário(s)</th><th>Dias Trab.</th><th>Base Mês</th><th>HE 50%</th><th>HE 100%</th><th>Banco</th><th>Total Geral</th><th>Ajustes</th></tr></thead>
-                <tbody id="reportEmployeesBody"></tbody>
-              </table>
-            </div>
+          <!-- RELATORIOS -->
+          <section class="tab-panel" id="tab-relatorios">
+            <div class="panel-header"><h2>Relatórios de HE</h2><button type="button" class="btn btn-neon btn-sm" id="btnExportReportCsv">Exportar CSV</button></div>
+            <div class="glass-card mb-14 overflow-x"><table class="modern-table"><tbody id="reportBlocksBody"></tbody></table></div>
+            <div class="glass-card overflow-x"><table class="modern-table"><thead><tr><th>Matrícula</th><th>Nome</th><th>Horário</th><th>Dias</th><th>Base(h)</th><th>HE50%</th><th>HE100%</th><th>Banco</th><th>Total</th></tr></thead><tbody id="reportEmployeesBody"></tbody></table></div>
           </section>
 
-          <!-- ABA 7: EXPORTAR ESCALA -->
-          <section class="tab-panel" id="tab-exportar" aria-label="Exportar Escala">
-            <div class="panel-header">
-              <div>
-                <h2>Central de Exportação Oficial</h2>
-                <p>Exporta sempre a escala completa (ignorando filtros de busca), com largura exata validada e suporte a divisão por quinzena.</p>
-              </div>
-            </div>
+          <!-- EXPORTAR -->
+          <section class="tab-panel" id="tab-exportar">
+            <div class="panel-header"><h2>Exportação Oficial</h2></div>
             <div class="glass-card mb-14">
               <div class="export-bar">
-                <div class="export-settings">
-                  <label class="form-inline"><span>Modo de Página:</span><select id="exportSplitMode" class="input-sm"><option value="full">Escala Mensal Completa (1 a Fim)</option><option value="fortnight">Dividir por Quinzena (Dias 1–15 e 16–Fim)</option></select></label>
-                  <label class="form-inline"><span>Resolução PNG:</span><select id="exportScaleSelect" class="input-sm"><option value="2">2x (Alta Definição - Recomendado)</option><option value="3">3x (Ultra HD - Impressão Grande)</option><option value="1">1x (Padrão)</option></select></label>
-                </div>
-                <div class="btn-row">
-                  <button type="button" class="btn btn-neon" id="btnGeneratePngMain">GERAR IMAGEM DA ESCALA</button>
-                  <button type="button" class="btn btn-outline" id="btnDownloadPng" disabled>Baixar PNG</button>
-                  <button type="button" class="btn btn-outline" id="btnExportPdf">Exportar PDF (A4 Paisagem)</button>
-                  <button type="button" class="btn btn-outline" id="btnPrintSchedule">Imprimir Escala</button>
-                  <button type="button" class="btn btn-outline" id="btnExportCsvDirect">Exportar Escala em CSV</button>
-                </div>
+                <select id="exportSplitMode" class="input-sm"><option value="full">Mensal</option><option value="fortnight">Quinzena</option></select>
+                <select id="exportScaleSelect" class="input-sm"><option value="2">2x HD</option><option value="1">1x</option></select>
+                <button type="button" class="btn btn-neon" id="btnGeneratePngMain">Gerar PNG</button>
+                <button type="button" class="btn btn-outline" id="btnDownloadPng" disabled>Baixar PNG</button>
+                <button type="button" class="btn btn-outline" id="btnExportPdf">Exportar PDF</button>
+                <button type="button" class="btn btn-outline" id="btnPrintSchedule">Imprimir</button>
               </div>
             </div>
-            <div class="glass-card">
-              <div class="card-head"><h3>Imagem Renderizada em Alta Resolução</h3><span class="mono-badge" id="exportRenderStatus">Pronto para gerar</span></div>
-              <div class="export-canvas-preview" id="exportImageResultBox"><div class="empty-state">Clique em <strong>"GERAR IMAGEM DA ESCALA"</strong> para criar o PNG oficial de alta definição.</div></div>
-            </div>
+            <div class="glass-card"><span id="exportRenderStatus">Pronto</span><div class="export-canvas-preview" id="exportImageResultBox"></div></div>
           </section>
 
-          <!-- ABA 8: CONFIGURAÇÕES E BACKUP -->
-          <section class="tab-panel" id="tab-config" aria-label="Configurações e Backup">
-            <div class="panel-header">
-              <div>
-                <h2>Configurações Visuais, Backup Local &amp; Limites HE</h2>
-                <p>Ajuste as siglas impressas na escala, altere os limites de alerta para as horas extras, ou exporte o seu ficheiro de backup JSON.</p>
-              </div>
-            </div>
+          <!-- CONFIG -->
+          <section class="tab-panel" id="tab-config">
+            <div class="panel-header"><h2>Configurações Globais</h2></div>
             <div class="dash-grid-2">
               <div class="glass-card">
-                <div class="card-head"><h3>Siglas &amp; Cores da Planilha Oficial</h3></div>
                 <form id="formVisualStyle" class="form-grid">
-                  <div class="form-field"><label for="cfgSymWork">Sigla Trabalho</label><input type="text" id="cfgSymWork" maxlength="4"></div>
-                  <div class="form-field"><label for="cfgSymOff">Sigla Folga</label><input type="text" id="cfgSymOff" maxlength="4"></div>
-                  <div class="form-field"><label for="cfgSymHoliday">Sigla Feriado</label><input type="text" id="cfgSymHoliday" maxlength="4"></div>
-                  <div class="form-field"><label for="cfgSymVacation">Sigla Férias</label><input type="text" id="cfgSymVacation" maxlength="6"></div>
-                  <div class="form-field"><label for="cfgColHeader">Cor Cabeçalho</label><input type="color" id="cfgColHeader"></div>
-                  <div class="form-field"><label for="cfgColYellow">Cor Destaque</label><input type="color" id="cfgColYellow"></div>
-                  <div class="form-field"><label for="cfgColWeekend">Cor Fim Semana</label><input type="color" id="cfgColWeekend"></div>
-                  <div class="form-field"><label for="cfgColScale">Cor Escala Padrão</label><input type="color" id="cfgColScale"></div>
-                  <div class="form-field span-2"><button type="submit" class="btn btn-neon">Salvar Estilo Visuais</button></div>
+                  <div class="form-field"><label>Trab</label><input type="text" id="cfgSymWork"></div>
+                  <div class="form-field"><label>Folga</label><input type="text" id="cfgSymOff"></div>
+                  <div class="form-field"><label>Feriado</label><input type="text" id="cfgSymHoliday"></div>
+                  <div class="form-field"><label>Férias</label><input type="text" id="cfgSymVacation"></div>
+                  <div class="form-field"><label>Cor Cab.</label><input type="color" id="cfgColHeader"></div>
+                  <div class="form-field"><label>Cor Y.</label><input type="color" id="cfgColYellow"></div>
+                  <div class="form-field"><label>Cor FDS</label><input type="color" id="cfgColWeekend"></div>
+                  <div class="form-field"><label>Cor Escala</label><input type="color" id="cfgColScale"></div>
+                  <div class="form-field span-2"><button type="submit" class="btn btn-neon">Salvar Cores</button></div>
                 </form>
               </div>
-              
               <div class="stack-gap">
                 <div class="glass-card">
-                   <div class="card-head"><h3>Limites e Alertas de Horas Extras</h3></div>
                    <form id="formHEConfig" class="form-grid">
-                      <div class="form-field span-2"><label class="switch-label"><input type="checkbox" id="cfgHEEnabled"><span>Habilitar Módulo de Horas Extras e Banco</span></label></div>
-                      <div class="form-field"><label for="cfgHEMaxDaily">Limite Máx. Diário (min)</label><input type="number" id="cfgHEMaxDaily" value="120"></div>
-                      <div class="form-field"><label for="cfgHEMaxMonthly">Limite Máx. Mensal (min)</label><input type="number" id="cfgHEMaxMonthly" value="2400"></div>
-                      <div class="form-field span-2"><button type="submit" class="btn btn-outline">Salvar Limites de HE</button></div>
+                      <div class="form-field span-2"><label class="switch-label"><input type="checkbox" id="cfgHEEnabled"><span>Habilitar HE</span></label></div>
+                      <div class="form-field"><label>Max Diário (min)</label><input type="number" id="cfgHEMaxDaily"></div>
+                      <div class="form-field"><label>Max Mensal (min)</label><input type="number" id="cfgHEMaxMonthly"></div>
+                      <div class="form-field span-2"><button type="submit" class="btn btn-outline">Salvar HE</button></div>
                    </form>
                 </div>
                 <div class="glass-card">
-                  <div class="card-head"><h3>Backup JSON Versionado (Local)</h3></div>
-                  <div class="btn-row mb-12">
-                    <button type="button" class="btn btn-neon" id="btnExportJson">Exportar Backup</button>
-                    <label class="btn btn-outline file-label">Importar JSON<input type="file" id="inputImportJson" accept=".json" hidden></label>
-                  </div>
-                  <div class="btn-row mb-12">
-                    <button type="button" class="btn btn-outline" id="btnRestoreReference">Carregar Modelo de Ref.</button>
-                    <button type="button" class="btn btn-danger" id="btnWipeAll">Limpar Tudo</button>
-                  </div>
-                  <div class="card-head mt-14"><h4>Motor Diagnóstico</h4><button type="button" class="btn btn-ghost btn-xs" id="btnRunTests">Executar 22 Testes</button></div>
-                  <pre class="test-console" id="selfTestOutput">Verificação de regras, turnos e HEs locais.</pre>
+                  <button type="button" class="btn btn-neon mb-12" id="btnExportJson">Backup JSON</button>
+                  <button type="button" class="btn btn-danger mb-12" id="btnWipeAll">Limpar Tudo</button>
+                  <button type="button" class="btn btn-ghost" id="btnRestoreReference">Carregar Modelo</button>
                 </div>
               </div>
             </div>
           </section>
 
-          <!-- ABA 9: CONTA & NUVEM FIREBASE (NOVA) -->
-          <section class="tab-panel" id="tab-conta" aria-label="Conta e Nuvem Firebase">
-            <div class="panel-header">
-              <div>
-                <h2>Sincronização Cloud (Local-First &amp; Firebase)</h2>
-                <p>Guarde as suas escalas na nuvem e trabalhe de forma partilhada. O sistema funciona offline e sincroniza quando voltar a ter rede.</p>
-              </div>
-            </div>
-            
+          <!-- CONTA & FIREBASE -->
+          <section class="tab-panel" id="tab-conta">
+            <div class="panel-header"><h2>Sincronização Nuvem</h2></div>
             <div class="dash-grid-2">
                <div class="glass-card">
-                  <div class="card-head"><h3>Conexão &amp; Autenticação</h3></div>
-                  <!-- Mensagem sobre o ficheiro firebase-config.js -->
-                  <div id="fbSetupState">
-                     <p class="text-muted-sm mb-12" style="color:var(--neon-primary)">
-                       ✅ <strong>Sucesso!</strong> O sistema está configurado para ler as credenciais automaticamente do ficheiro <code>firebase-config.js</code>.
-                     </p>
-                  </div>
-                  
-                  <hr class="sep">
-                  
-                  <div id="fbAuthState" hidden>
-                     <h4 class="mb-12">Entrar na sua Conta</h4>
+                  <div id="fbAuthState">
                      <form id="fbAuthForm" class="form-grid">
-                        <div class="form-field span-2"><input type="email" id="fbEmail" placeholder="E-mail de acesso" required></div>
-                        <div class="form-field span-2"><input type="password" id="fbPass" placeholder="Palavra-passe" required></div>
+                        <div class="form-field span-2"><input type="email" id="fbEmail" placeholder="E-mail"></div>
+                        <div class="form-field span-2"><input type="password" id="fbPass" placeholder="Senha"></div>
                         <div class="form-field span-2 btn-row">
                            <button type="button" class="btn btn-neon" id="btnFbLogin">Iniciar Sessão</button>
                            <button type="button" class="btn btn-outline" id="btnFbRegister">Criar Conta</button>
                         </div>
                      </form>
                   </div>
-                  
                   <div id="fbLoggedInState" hidden>
-                     <p class="mb-12" style="color:var(--neon-primary)"><strong>Conectado como:</strong> <span id="fbUserEmailSpan">--</span></p>
-                     <div class="btn-row">
-                        <button type="button" class="btn btn-outline btn-sm" id="btnFbLogout">Terminar Sessão</button>
-                     </div>
+                     <p>Logado: <span id="fbUserEmailSpan" style="color:var(--neon-primary)">--</span></p>
+                     <button type="button" class="btn btn-outline btn-sm" id="btnFbLogout">Terminar Sessão</button>
                   </div>
                </div>
-               
                <div class="stack-gap">
+                 <div class="glass-card"><p>Espaço: <strong id="fbWorkspaceNameSpan">--</strong> (<span id="fbRoleBadge">--</span>)</p></div>
                  <div class="glass-card">
-                    <div class="card-head"><h3>Workspace Colaborativo</h3><span class="mono-badge" id="fbRoleBadge">--</span></div>
-                    <p class="text-muted-sm mb-12">Está a trabalhar no espaço: <strong id="fbWorkspaceNameSpan" style="color:#fff">--</strong></p>
+                    <p>Sinc: <span id="fbLastSyncSpan">--</span></p>
+                    <button type="button" class="btn btn-neon btn-sm" id="btnFbForcePush" disabled>Forçar Envio Nuvem</button>
                  </div>
-                 
                  <div class="glass-card">
-                    <div class="card-head"><h3>Sincronização Manual &amp; Conflitos</h3></div>
-                    <p class="text-muted-sm mb-12">Última leitura da cloud: <strong id="fbLastSyncSpan">Ainda não ocorreu</strong></p>
-                    <div class="btn-row">
-                       <button type="button" class="btn btn-neon btn-sm" id="btnFbForcePush" disabled>⬆️ Forçar Envio (Local &rarr; Nuvem)</button>
-                       <button type="button" class="btn btn-outline btn-sm" id="btnFbForcePull" disabled>⬇️ Forçar Descarga (Nuvem &rarr; Local)</button>
-                    </div>
                     <div class="form-field mt-14">
-                      <label class="switch-label"><input type="checkbox" id="cfgRequireLogin"><span>Bloquear visualização do sistema a quem não tiver Sessão Iniciada</span></label>
+                      <label class="switch-label"><input type="checkbox" id="cfgRequireLogin"><span>Bloquear acesso sem login (Tela Inicial Obrigatória)</span></label>
                     </div>
                  </div>
                </div>
             </div>
           </section>
 
-          <!-- ABA 10: AJUDA E TUTORIAL -->
-          <section class="tab-panel" id="tab-ajuda" aria-label="Central de Ajuda e Tutorial Visual">
+          <!-- AJUDA -->
+          <section class="tab-panel" id="tab-ajuda">
             <div class="panel-header">
               <div>
                 <h2>Guia Definitivo — Como Fazer a Sua Escala do Zero</h2>
-                <p>Passo a passo completo revelando como criar os turnos, o "segredo" para alternar as folgas, atalhos novos de teclado e uso do Menu Contextual.</p>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn btn-neon btn-sm" data-switch-tab="escala">Ir para o Editor de Escala</button>
+                <p>O sistema foi atualizado com a Tela de Segurança. Faça login ou use Offline.</p>
               </div>
             </div>
-
             <div class="help-tutorial-grid">
-              <!-- PASSO 1 -->
               <article class="glass-card help-step-card">
                 <div class="help-step-badge">PARTE 1</div>
-                <h3>Como Criar a Escala do Zero</h3>
-                <div class="help-desc">
-                  <strong>1. Limpar a Base:</strong> Vá à aba <em>Config & Backup</em> e clique em <b>"Limpar Tudo"</b>.<br><br>
-                  <strong>2. Criar os Seus Turnos:</strong> Vá à aba <em>Turnos & Mês</em>. Apague os blocos antigos e crie: <b>Manhã</b>, <b>Dupla Pegada</b> e <b>Tarde</b>.<br><br>
-                  <strong>3. Configurar o Mês:</strong> Escolha o Mês/Ano e clique em "Sugerir Feriados do Mês".
-                </div>
+                <h3>Como Criar a Escala</h3>
+                <div class="help-desc">Vá a <em>Config & Backup</em> e clique em <b>"Limpar Tudo"</b>. Vá a <em>Turnos & Mês</em> e crie os seus blocos (Manhã, Tarde...).</div>
               </article>
-              <!-- O resto do guia continua igual -->
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 2</div>
+                <h3>Viagem no Tempo</h3>
+                <div class="help-desc">Na aba <em>Montar Escala</em>, clique com o <b>botão direito do rato na Célula Azul</b> (ex: S/D-1) para abrir o Menu Contextual. Nele pode inverter a fase (+7 dias) de forma instantânea.</div>
+              </article>
+              <article class="glass-card help-step-card">
+                <div class="help-step-badge">PARTE 3</div>
+                <h3>Horas Extras & Trocas</h3>
+                <div class="help-desc">Pressione <code>Shift</code> e arraste uma folga para a mover rapidamente. Prima <code>H</code> para o pincel de Hora Extra e clique nos dias pretendidos.</div>
+              </article>
             </div>
           </section>
-
         </main>
 
-        <!-- PAINEL DIREITO: PRÉVIA AO VIVO DA PLANILHA OFICIAL -->
-        <aside class="preview-pane" id="previewPane" aria-label="Prévia ao vivo da escala oficial">
+        <!-- PRÉVIA DIREITA -->
+        <aside class="preview-pane" id="previewPane">
           <div class="preview-toolbar">
-            <div class="preview-title-group">
-              <span class="live-indicator"></span>
-              <strong>PRÉVIA AO VIVO</strong>
-              <span class="mono-badge" id="previewSyncStamp">Sincronizado</span>
-            </div>
-            <div class="preview-zoom-controls">
-              <button type="button" class="btn-icon-sm" id="btnZoomOut" title="Diminuir Zoom (-)">-</button>
-              <input type="range" id="previewZoomSlider" min="50" max="200" step="5" value="85" aria-label="Zoom da prévia">
-              <span class="mono-badge" id="previewZoomValue">85%</span>
-              <button type="button" class="btn-icon-sm" id="btnZoomIn" title="Aumentar Zoom (+)">+</button>
-              <button type="button" class="btn btn-ghost btn-xs" id="btnZoomFit" title="Ajustar planilha à largura do painel">Ajustar Largura</button>
-              <button type="button" class="btn btn-ghost btn-xs" id="btnExpandPreview" title="Expandir ou restaurar painel de prévia">Expandir</button>
-            </div>
+            <span class="live-indicator"></span><strong>PRÉVIA</strong>
+            <input type="range" id="previewZoomSlider" min="50" max="200" step="5" value="85"><span id="previewZoomValue">85%</span>
           </div>
-
-          <div class="preview-viewport" id="previewViewport">
-            <div class="preview-scale-stage" id="previewScaleStage">
-              <div id="liveOfficialPreviewMount"></div>
-            </div>
-          </div>
+          <div class="preview-viewport" id="previewViewport"><div class="preview-scale-stage" id="previewScaleStage"><div id="liveOfficialPreviewMount"></div></div></div>
         </aside>
       </div>
     </div>
   </div>
 
-  <!-- MENU POP-OVER DE ESCALA DA CÉLULA AZUL (CONTEXT MENU) -->
+  <!-- POPOVER E MODAIS -->
   <div class="context-menu-popover" id="scalePopoverMenu" hidden>
-    <div class="popover-head">Mudar Regra/Fase <span id="popoverEmpName" style="color:var(--neon-primary)"></span></div>
+    <div class="popover-head"><span id="popoverEmpName"></span></div>
     <div class="popover-body">
-      <div class="form-field mb-12">
-        <label>Nova Regra:</label>
-        <select id="popoverRuleSelect" class="input-sm">
-          <option value="SD1">S/D-1 (Fase 1)</option>
-          <option value="SD2">S/D-2 (Fase Oposta)</option>
-          <option value="12x36">12x36 (Dia Sim/Não)</option>
-          <option value="24x48">24x48 (1 Trab/2 Folga)</option>
-          <option value="6x1">6x1</option>
-          <option value="5x2">5x2</option>
-          <option value="4x2">4x2</option>
-          <option value="CUSTOM">Personalizada</option>
-        </select>
-      </div>
-      <div class="form-field mb-12">
-         <label>Valer a partir de (Viagem no tempo):</label>
-         <input type="date" id="popoverFromDate" class="input-sm">
-      </div>
-      <div class="btn-row" style="justify-content:space-between;">
-         <button type="button" class="btn btn-outline btn-xs" id="btnPopoverInvert">🔄 Inverter Fase / +7d</button>
-         <div class="btn-row gap-2">
-           <button type="button" class="btn btn-outline btn-xs" id="btnPopoverShiftLeft">⏪ -1d</button>
-           <button type="button" class="btn btn-outline btn-xs" id="btnPopoverShiftRight">+1d ⏩</button>
-         </div>
-      </div>
-      <hr class="sep">
-      <div class="btn-row">
-         <button type="button" class="btn btn-ghost btn-xs" id="btnPopoverCancel">Cancelar</button>
-         <button type="button" class="btn btn-neon btn-xs" id="btnPopoverApply">Salvar Mudança</button>
-      </div>
+      <select id="popoverRuleSelect" class="input-sm"><option value="SD1">S/D-1</option><option value="SD2">S/D-2</option><option value="12x36">12x36</option><option value="24x48">24x48</option><option value="6x1">6x1</option><option value="5x2">5x2</option><option value="4x2">4x2</option><option value="CUSTOM">Custom</option></select>
+      <input type="date" id="popoverFromDate" class="input-sm mt-12">
+      <div class="btn-row mt-12"><button type="button" class="btn btn-outline btn-xs" id="btnPopoverInvert">Inverter/7d</button><button type="button" class="btn btn-outline btn-xs" id="btnPopoverShiftLeft">-1d</button><button type="button" class="btn btn-outline btn-xs" id="btnPopoverShiftRight">+1d</button></div>
+      <div class="btn-row mt-12"><button type="button" class="btn btn-ghost btn-xs" id="btnPopoverCancel">Cancelar</button><button type="button" class="btn btn-neon btn-xs" id="btnPopoverApply">Salvar</button></div>
     </div>
   </div>
 
-  <!-- MODAL DE EDIÇÃO DE CÉLULA COM HORAS EXTRAS (Duplo Clique) -->
-  <div class="modal-overlay" id="cellModal" hidden role="dialog" aria-modal="true" aria-labelledby="cellModalTitle">
+  <div class="modal-overlay" id="dialogModal" hidden>
     <div class="modal-card modal-sm">
-      <div class="modal-head">
-        <h3 id="cellModalTitle">Ajuste Manual do Dia</h3>
-        <button type="button" class="btn-close" id="btnCloseCellModal" aria-label="Fechar">&times;</button>
-      </div>
-      <form id="formCellModal">
+      <div class="modal-head"><h3 id="dialogModalTitle"></h3><button id="btnCloseDialogModal" class="btn-close">&times;</button></div>
+      <div class="modal-body"><p id="dialogModalMessage"></p><div id="dialogPromptWrap" hidden><input type="text" id="dialogPromptInput"></div></div>
+      <div class="modal-foot"><button id="btnDialogCancel" class="btn btn-ghost">Cancelar</button><button id="btnDialogConfirm" class="btn btn-neon">Confirmar</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="employeeModal" hidden>
+    <div class="modal-card modal-lg">
+      <div class="modal-head"><h3 id="empModalTitle"></h3><button id="btnCloseEmpModal" class="btn-close">&times;</button></div>
+      <form id="formEmployeeModal">
         <div class="modal-body form-grid">
-          <p id="cellModalInfo" class="text-muted-sm span-2" style="background:#132620;padding:8px;border-radius:6px;"></p>
-          
-          <div class="form-field span-2">
-            <label for="cellModalStatus">Forçar Status na Planilha Oficial</label>
-            <select id="cellModalStatus">
-              <option value="AUTO">🔄 Automático (Seguir Regra do Ciclo)</option>
-              <option value="T">✅ Trabalho (T / Em branco)</option>
-              <option value="F">🟨 Folga (F)</option>
-              <option value="FE">🎉 Feriado (FE)</option>
-              <option value="FER">🏖️ Férias (FER)</option>
-              <option value="AF">🏥 Afastamento (AF)</option>
-              <option value="CUSTOM">✏️ Sigla Personalizada</option>
-            </select>
-          </div>
-          <div class="form-field span-2" id="cellModalCustomWrap" hidden>
-            <label for="cellModalCustomText">Sigla Personalizada (máx. 4 char)</label>
-            <input type="text" id="cellModalCustomText" maxlength="4" placeholder="Ex: BH, TR, AT">
-          </div>
-          
-          <hr class="sep span-2 mt-12 mb-12">
-          
-          <div class="form-field span-2">
-            <label>Lançar Hora Extra (HE) / Banco de Horas</label>
-            <div style="display:flex;gap:8px;">
-               <input type="text" id="cellModalHE" placeholder="Min ou HH:MM" style="flex:1;">
-               <select id="cellModalHEType" style="flex:2;">
-                  <option value="AUTO">Cálculo Auto (50%/100%)</option>
-                  <option value="50">Forçar 50%</option>
-                  <option value="100">Forçar 100%</option>
-                  <option value="BANCO">Banco de Horas</option>
-               </select>
-            </div>
-          </div>
-          <div class="form-field span-2 btn-row">
-             <button type="button" class="btn btn-outline btn-xs" data-quick-he="30">+ 0:30</button>
-             <button type="button" class="btn btn-outline btn-xs" data-quick-he="60">+ 1:00</button>
-             <button type="button" class="btn btn-outline btn-xs" data-quick-he="120">+ 2:00</button>
-             <button type="button" class="btn btn-danger btn-xs" data-quick-he="0">Zerar</button>
-          </div>
-
-          <hr class="sep span-2 mt-12 mb-12">
-
-          <div class="form-field span-2">
-            <label for="cellModalYellow">Fundo Amarelo (Ex: Trocas)</label>
-            <select id="cellModalYellow">
-              <option value="default">Automático (Padrão/Feriado)</option>
-              <option value="yes">Forçar Destaque Amarelo</option>
-              <option value="no">Sem Fundo (Tirar Amarelo)</option>
-            </select>
-          </div>
-          <div class="form-field span-2">
-            <label for="cellModalNote">Justificativa da Edição (Não sai na foto)</label>
-            <input type="text" id="cellModalNote" placeholder="Ex: Cobre a falta do Rodrigo">
-          </div>
+          <input type="hidden" id="empModalId">
+          <div class="form-field"><label>Nome</label><input type="text" id="empModalName" required></div>
+          <div class="form-field"><label>Matrícula</label><input type="text" id="empModalMatricula" required></div>
+          <div class="form-field"><label>Status</label><select id="empModalStatus"><option value="ativo">Ativo</option><option value="ferias">Férias</option><option value="afastado">Afastado</option></select></div>
+          <div class="form-field"><label>Bloco</label><select id="empModalBlock" required></select></div>
+          <div class="form-field"><label>Entrada</label><input type="time" id="empModalEntry1"></div>
+          <div class="form-field"><label>Saída</label><input type="time" id="empModalExit1"></div>
+          <div class="form-field"><label>Pausa</label><input type="number" id="empModalBreak"></div>
+          <div class="form-field"><label>2º Turno</label><select id="empModalSecondShift"><option value="no">Não</option><option value="yes">Sim</option></select></div>
+          <div class="form-field second-shift-row" hidden><label>Entrada 2</label><input type="time" id="empModalEntry2"></div>
+          <div class="form-field second-shift-row" hidden><label>Saída 2</label><input type="time" id="empModalExit2"></div>
+          <div class="form-field"><label>Célula</label><input type="text" id="empModalScaleLabel"></div>
+          <div class="form-field"><label>Cor</label><input type="color" id="empModalScaleColor"></div>
+          <div class="form-field"><label>Regra</label><select id="empModalRuleType"><option value="SD1">S/D-1</option><option value="SD2">S/D-2</option><option value="12x36">12x36</option><option value="24x48">24x48</option><option value="6x1">6x1</option><option value="5x2">5x2</option><option value="4x2">4x2</option><option value="CUSTOM">Custom</option></select></div>
+          <div class="form-field"><label>Data Início</label><input type="date" id="empModalCycleStart"></div>
+          <div class="form-field"><label>Dias Trab</label><input type="number" id="empModalWorkDays"></div>
+          <div class="form-field"><label>Dias Folga</label><input type="number" id="empModalOffDays"></div>
+          <div class="form-field span-2"><label>Notas</label><input type="text" id="empModalNotes"></div>
         </div>
-        <div class="modal-foot">
-          <button type="button" class="btn btn-ghost" id="btnCancelCellModal">Cancelar</button>
-          <button type="submit" class="btn btn-neon">Aplicar no Dia</button>
-        </div>
+        <div class="modal-foot"><button type="button" id="btnCancelEmpModal" class="btn btn-ghost">Cancelar</button><button type="submit" class="btn btn-neon">Salvar</button></div>
       </form>
     </div>
   </div>
-  
-  <!-- MODAL DE CADASTRO DE FUNCIONÁRIO, TOASTS ETC... -->
-  <!-- Mantido o resto idêntico para não exceder o limite de caracteres -->
-  
+
+  <div class="modal-overlay" id="cellModal" hidden>
+    <div class="modal-card modal-sm">
+      <div class="modal-head"><h3 id="cellModalTitle"></h3><button id="btnCloseCellModal" class="btn-close">&times;</button></div>
+      <form id="formCellModal">
+        <div class="modal-body form-grid">
+          <p id="cellModalInfo" class="span-2"></p>
+          <div class="form-field span-2"><label>Status</label><select id="cellModalStatus"><option value="AUTO">Auto</option><option value="T">T</option><option value="F">F</option><option value="FE">FE</option><option value="FER">FER</option><option value="AF">AF</option><option value="CUSTOM">Custom</option></select></div>
+          <div class="form-field span-2" id="cellModalCustomWrap" hidden><input type="text" id="cellModalCustomText"></div>
+          <div class="form-field span-2"><label>HE</label><input type="text" id="cellModalHE"><select id="cellModalHEType"><option value="AUTO">Auto</option><option value="50">50%</option><option value="100">100%</option><option value="BANCO">Banco</option></select></div>
+          <div class="form-field span-2 btn-row"><button type="button" class="btn btn-outline btn-xs" data-quick-he="30">+30</button><button type="button" class="btn btn-outline btn-xs" data-quick-he="60">+1h</button><button type="button" class="btn btn-danger btn-xs" data-quick-he="0">Zero</button></div>
+          <div class="form-field span-2"><label>Amarelo</label><select id="cellModalYellow"><option value="default">Padrão</option><option value="yes">Sim</option><option value="no">Não</option></select></div>
+          <div class="form-field span-2"><label>Nota</label><input type="text" id="cellModalNote"></div>
+        </div>
+        <div class="modal-foot"><button type="button" id="btnCancelCellModal" class="btn btn-ghost">Cancelar</button><button type="submit" class="btn btn-neon">Aplicar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="printStagingArea" class="print-staging-area" aria-hidden="true"></div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
   <script src="script.js"></script>
 </body>
 </html>

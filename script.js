@@ -1,15 +1,15 @@
 /**
  * ============================================================================
- * FROTA.OS // SISTEMA CRIADOR DE ESCALA DE TRABALHO (ES2022) - v4.0
+ * FROTA.OS // SISTEMA CRIADOR DE ESCALA DE TRABALHO (ES2022) - v4.5 Completo
  * ============================================================================
  * Módulos:
  * 1. Helpers & Sec
- * 2. CloudSyncAdapter (Firebase Local-First)
- * 3. ScheduleEngine (Regras, HE, Viagem no Tempo)
+ * 2. CloudSyncAdapter (Firestore Integrado com AuthManager)
+ * 3. ScheduleEngine (Regras, HE, Viagem no Tempo, Relatórios)
  * 4. Store (Estado, Undo/Redo)
  * 5. Renderer (DOM Patching)
  * 6. ExportService (PNG/PDF/CSV)
- * 7. UI (Context Menu, Drag&Drop, Modais)
+ * 7. UI (Context Menu, Drag&Drop, Modais, Reports)
  * 8. SelfTests (22 Testes)
  * ============================================================================
  */
@@ -25,7 +25,7 @@ const FIXED_NATIONAL_HOLIDAYS = { 1: [1], 4: [21], 5: [1], 9: [7], 10: [12], 11:
 const $ = id => document.getElementById(id); const $$ = sel => document.querySelectorAll(sel);
 
 // ============================================================================
-// 1. HELPERS & SANITIZAÇÃO
+// 1. HELPERS E SANITIZAÇÃO
 // ============================================================================
 function escapeHTML(val) {
   return String(val ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -54,131 +54,89 @@ function formatMins(m) {
 }
 
 // ============================================================================
-// 2. FIREBASE & CLOUD ADAPTER (LOCAL-FIRST)
+// 2. FIREBASE & CLOUD ADAPTER (Sincronizado com auth.js)
 // ============================================================================
 const CloudSyncAdapter = {
-  app: null, db: null, auth: null,
-  enabled: false, user: null, role: null, workspaceId: 'default_ws',
-  unsubMeta: null, unsubMonth: null, isPendingWrite: false,
-
+  db: null, enabled: false, user: null, role: null, workspaceId: 'default_ws', unsubMeta: null, unsubMonth: null, isPendingWrite: false,
+  
   init() {
-    const cfgRaw = localStorage.getItem('FROTA_OS_FIREBASE_CFG');
-    if (cfgRaw && window.firebase) {
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
       try {
-        const cfg = JSON.parse(cfgRaw);
-        if (!firebase.apps.length) this.app = firebase.initializeApp(cfg);
         this.db = firebase.firestore();
-        this.auth = firebase.auth();
-        this.db.enablePersistence({ synchronizeTabs: true }).catch(console.warn);
+        this.db.enablePersistence().catch(()=>{});
         this.enabled = true;
-        this.listenAuth();
-      } catch(e) { UI.toast('Erro na config do Firebase.', 'error'); }
+      } catch(e) { console.error('Erro na persistência local Firestore.', e); }
     }
   },
 
-  listenAuth() {
-    this.auth.onAuthStateChanged(async u => {
-      this.user = u;
-      if (u) {
-        UI.updateCloudBadge(`Conectado: ${u.email}`, 'var(--neon-primary)');
-        $('fbUserEmailSpan').textContent = u.email;
-        $('fbAuthState').hidden = true; $('fbLoggedInState').hidden = false;
-        await this.loadWorkspace();
-      } else {
-        UI.updateCloudBadge('Local (Deslogado)', 'var(--text-secondary)');
-        this.role = null; $('fbRoleBadge').textContent = '--';
-        $('fbAuthState').hidden = false; $('fbLoggedInState').hidden = true;
-        if (Store.state.config.requireLogin) {
-          Store.state = createReferenceModelState(); Store.commit('all');
-          UI.toast('Login obrigatório. Acesso bloqueado.', 'error');
-        }
-      }
-    });
+  // Chamado via evento 'auth-success' do auth.js
+  async onAuthSuccess(user) {
+    this.user = user;
+    await this.loadWorkspace();
+  },
+
+  // Chamado via evento 'auth-logout' do auth.js
+  onAuthLogout() {
+    this.user = null; this.role = null;
+    if(this.unsubMeta) { this.unsubMeta(); this.unsubMeta = null; }
+    if(this.unsubMonth) { this.unsubMonth(); this.unsubMonth = null; }
   },
 
   async loadWorkspace() {
-    if (!this.user) return;
+    if (!this.user || !this.enabled) return;
     try {
       const snap = await this.db.collection('workspaces').where(`members.${this.user.uid}.role`, 'in', ['admin','editor','leitor']).limit(1).get();
       if (!snap.empty) {
-        this.workspaceId = snap.docs[0].id;
-        const data = snap.docs[0].data();
-        this.role = data.members[this.user.uid].role;
-        $('fbWorkspaceNameSpan').textContent = data.name || this.workspaceId;
-        $('fbRoleBadge').textContent = this.role.toUpperCase();
+        this.workspaceId = snap.docs[0].id; 
+        this.role = snap.docs[0].data().members[this.user.uid].role;
         this.attachListeners();
-      } else {
-        $('fbWorkspaceNameSpan').textContent = "Nenhum espaço";
-        UI.toast('Conta sem espaço de trabalho associado.', 'warn');
       }
-    } catch(e) { console.error(e); UI.toast('Erro ao aceder ao Workspace.', 'error'); }
+    } catch(e) { console.error("Erro a carregar Workspace:", e); }
   },
 
   attachListeners() {
     if(this.unsubMeta) this.unsubMeta();
-    this.unsubMeta = this.db.collection('workspaces').doc(this.workspaceId).collection('meta').doc('main')
-      .onSnapshot(doc => {
-        if(doc.metadata.hasPendingWrites) return;
-        if(doc.exists) this.handleIncomingMeta(doc.data());
-      });
+    this.unsubMeta = this.db.collection('workspaces').doc(this.workspaceId).collection('meta').doc('main').onSnapshot(doc => {
+      if(doc.metadata.hasPendingWrites) return; if(doc.exists) this.handleIncomingMeta(doc.data());
+    });
     this.listenMonth(ScheduleEngine.getMonthKey(Store.state.selectedYear, Store.state.selectedMonth));
   },
 
   listenMonth(mKey) {
     if(this.unsubMonth) this.unsubMonth();
-    this.unsubMonth = this.db.collection('workspaces').doc(this.workspaceId).collection('months').doc(mKey)
-      .onSnapshot(doc => {
-        if(doc.metadata.hasPendingWrites) return;
-        if(doc.exists) this.handleIncomingMonth(mKey, doc.data());
-      });
+    this.unsubMonth = this.db.collection('workspaces').doc(this.workspaceId).collection('months').doc(mKey).onSnapshot(doc => {
+      if(doc.metadata.hasPendingWrites) return; if(doc.exists) this.handleIncomingMonth(mKey, doc.data());
+    });
   },
 
   handleIncomingMeta(data) {
     if ((data.rev || 0) > (Store.state.rev || 0)) {
-      UI.toast('Atualização recebida da Nuvem...');
       const merged = Store.sanitizeAndMigrate({ ...Store.state, ...data });
       Object.assign(Store.state, { groups: merged.groups, employees: merged.employees, vacations: merged.vacations, config: merged.config, rev: data.rev });
       Renderer.renderAll(Store.state, 'all');
-      const now = new Date();
-      $('fbLastSyncSpan').textContent = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
     }
   },
 
   handleIncomingMonth(mKey, data) {
-    Store.state.manualOverrides[mKey] = data.manualOverrides || {};
-    Store.state.overtime[mKey] = data.overtime || {};
-    Renderer.patchGrid(Store.state, null, true);
-    Renderer.debouncedAnalytics(Store.state);
+    Store.state.manualOverrides[mKey] = data.manualOverrides || {}; Store.state.overtime[mKey] = data.overtime || {};
+    Renderer.patchGrid(Store.state, null, true); Renderer.debouncedAnalytics(Store.state);
   },
 
   async pushState(state) {
     if (!this.enabled || !this.user || this.role === 'leitor' || this.isPendingWrite) return;
     try {
-      this.isPendingWrite = true;
-      const batch = this.db.batch();
-      const wsRef = this.db.collection('workspaces').doc(this.workspaceId);
-      
+      this.isPendingWrite = true; const batch = this.db.batch(); const wsRef = this.db.collection('workspaces').doc(this.workspaceId);
       state.rev = (state.rev || 0) + 1;
-      batch.set(wsRef.collection('meta').doc('main'), {
-        groups: state.groups, employees: state.employees, vacations: state.vacations, config: state.config, rev: state.rev
-      }, { merge: true });
-
+      batch.set(wsRef.collection('meta').doc('main'), { groups: state.groups, employees: state.employees, vacations: state.vacations, config: state.config, rev: state.rev }, { merge: true });
       const mKey = ScheduleEngine.getMonthKey(state.selectedYear, state.selectedMonth);
-      batch.set(wsRef.collection('months').doc(mKey), {
-        manualOverrides: state.manualOverrides[mKey] || {}, overtime: state.overtime[mKey] || {}
-      }, { merge: true });
-
-      await batch.commit();
-      UI.updateCloudBadge('Sincronizado', '#00e676');
-      const now = new Date(); $('fbLastSyncSpan').textContent = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()} (Envio)`;
-    } catch (e) {
-      console.error(e); UI.updateCloudBadge('Erro Sinc', 'var(--danger)');
-    } finally { this.isPendingWrite = false; }
+      batch.set(wsRef.collection('months').doc(mKey), { manualOverrides: state.manualOverrides[mKey] || {}, overtime: state.overtime[mKey] || {} }, { merge: true });
+      await batch.commit(); 
+    } catch (e) {} finally { this.isPendingWrite = false; }
   }
 };
 
 // ============================================================================
-// 3. MOTOR DE CÁLCULO (ScheduleEngine)
+// 3. MOTOR DE CÁLCULO E REGRAS (ScheduleEngine)
 // ============================================================================
 const ScheduleEngine = {
   dateToEpochDays(dStr) {
@@ -194,19 +152,22 @@ const ScheduleEngine = {
   getDayOfWeekUTC(y,m,d) { return new Date(Date.UTC(y,m-1,d)).getUTCDay(); },
 
   getEasterDate(year) {
-    const a = year%19, b = Math.floor(year/100), c = year%100, d = Math.floor(b/4), e = b%4;
-    const f = Math.floor((b+8)/25), g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15)%30;
-    const i = Math.floor(c/4), k = c%4, l = (32+2*e+2*i-h-k)%7;
-    const m = Math.floor((a+11*h+22*l)/451), month = Math.floor((h+l-7*m+114)/31), day = ((h+l-7*m+114)%31)+1;
+    const a=year%19, b=Math.floor(year/100), c=year%100, d=Math.floor(b/4), e=b%4;
+    const f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30;
+    const i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7;
+    const m=Math.floor((a+11*h+22*l)/451), month=Math.floor((h+l-7*m+114)/31), day=((h+l-7*m+114)%31)+1;
     return { year, month, day, dateISO: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}` };
   },
 
   getMovableHolidaysForYear(year) {
     const e = this.dateToEpochDays(this.getEasterDate(year).dateISO);
     return [
-      { off: -48, n: 'Carnaval' }, { off: -47, n: 'Carnaval' },
-      { off: -2, n: 'Sexta Santa' }, { off: 0, n: 'Páscoa' }, { off: 60, n: 'Corpus Christi' }
-    ].map(x => { const d = this.epochToISO(e+x.off).split('-').map(Number); return { year:d[0], month:d[1], day:d[2] }; });
+      { off: -48, name: 'Carnaval' }, { off: -47, name: 'Carnaval' },
+      { off: -2, name: 'Sexta Santa' }, { off: 0, name: 'Páscoa' }, { off: 60, name: 'Corpus Christi' }
+    ].map(item => {
+      const d = this.epochToISO(e + item.off).split('-').map(Number);
+      return { year: d[0], month: d[1], day: d[2] };
+    });
   },
 
   getHolidaysForMonth(state, y, m) {
@@ -217,23 +178,22 @@ const ScheduleEngine = {
     return Array.from(new Set([...fx, ...mv])).sort((a,b)=>a-b);
   },
 
-  // Viagem no tempo: Pega na regra ativa no dia D
   getEffectiveRule(emp, isoDate) {
     if(!emp.scaleChanges || !emp.scaleChanges.length) return emp;
     const past = emp.scaleChanges.filter(c => c.from <= isoDate).sort((a,b) => a.from>b.from ? -1 : 1);
-    if(past.length > 0) return { ...emp, ...past[0] };
+    if(past.length > 0) return { ...emp, ruleType: past[0].ruleType, cycleStartDate: past[0].cycleStartDate, workDays: past[0].workDays, offDays: past[0].offDays, scaleLabel: past[0].scaleLabel };
     return emp;
   },
 
   calculateRuleOnlyStatus(rule, isoDate) {
-    const tE = this.dateToEpochDays(isoDate);
-    const sE = this.dateToEpochDays(rule.cycleStartDate || '2026-11-01');
+    const tE = this.dateToEpochDays(isoDate), sE = this.dateToEpochDays(rule.cycleStartDate || '2026-11-01');
     const dow = new Date(tE * 86400000).getUTCDay();
 
     if(rule.ruleType === 'SD1' || rule.ruleType === 'SD2') {
       if(dow >= 1 && dow <= 5) return 'T';
-      const isEv = ((Math.floor((tE+3)/7) - Math.floor((sE+3)/7)) % 2 + 2) % 2 === 0;
-      return rule.ruleType==='SD1' ? (isEv ? (dow===0?'F':'T') : (dow===6?'F':'T')) : (isEv ? (dow===6?'F':'T') : (dow===0?'F':'T'));
+      const isEven = ((Math.floor((tE+3)/7) - Math.floor((sE+3)/7)) % 2 + 2) % 2 === 0;
+      if(rule.ruleType === 'SD1') return isEven ? (dow===0?'F':'T') : (dow===6?'F':'T');
+      return isEven ? (dow===6?'F':'T') : (dow===0?'F':'T');
     }
 
     let w = 6, o = 1;
@@ -249,74 +209,96 @@ const ScheduleEngine = {
     return (((tE - sE) % c) + c) % c < w ? 'T' : 'F';
   },
 
-  isEmpInFooter(state, emp, y, m) {
+  isEmployeeInFooterVacation(state, emp, y, m) {
     const s = this.formatDateISO(y,m,1), e = this.formatDateISO(y,m,this.getDaysInMonth(y,m));
-    return (state.vacations||[]).some(v => v.employeeId===emp.id && v.type==='FERIAS' && v.displayMode!=='inline_days' && v.startDate<=e && v.endDate>=s);
+    const hV = (state.vacations||[]).some(v => v.employeeId===emp.id && v.type==='FERIAS' && v.displayMode!=='inline_days' && v.startDate<=e && v.endDate>=s);
+    return hV || (emp.status === 'ferias' && !(state.vacations||[]).some(v => v.employeeId===emp.id && v.type==='FERIAS' && v.displayMode==='inline_days' && v.startDate<=e && v.endDate>=s));
   },
 
   resolveCell(state, emp, y, m, d) {
     const iso = this.formatDateISO(y,m,d), mK = this.getMonthKey(y,m), cK = `${emp.id}_${d}`;
-    const ruleObj = this.getEffectiveRule(emp, iso);
-    let auto = this.calculateRuleOnlyStatus(ruleObj, iso);
+    const rObj = this.getEffectiveRule(emp, iso); let auto = this.calculateRuleOnlyStatus(rObj, iso);
     
     if(emp.status === 'afastado') auto = 'AF';
     const vac = (state.vacations||[]).find(v => v.employeeId===emp.id && iso>=v.startDate && iso<=v.endDate);
     if(vac) auto = (vac.type==='FERIAS' && vac.displayMode!=='footer_bar') ? 'FER' : (vac.type!=='FERIAS'?'AF':auto);
 
-    const man = state.manualOverrides?.[mK]?.[cK];
-    const finalSt = (man && man.status!=='AUTO') ? man.status : auto;
-    
-    const dow = this.getDayOfWeekUTC(y,m,d);
-    const isHol = this.getHolidaysForMonth(state, y, m).includes(d);
+    const man = state.manualOverrides?.[mK]?.[cK]; const finalSt = (man && man.status!=='AUTO') ? man.status : auto;
+    const dow = this.getDayOfWeekUTC(y,m,d), isHol = this.getHolidaysForMonth(state, y, m).includes(d);
     const isYel = man?.yellow==='yes' || (man?.yellow!=='no' && (isHol || (state.config.highlightAllFolgasYellow && (finalSt==='F'||finalSt==='FE'))));
     
     const sy = state.config.symbols;
     let txt = finalSt==='T' ? (state.config.showWorkSymbol?sy.work:'') : finalSt==='F'?sy.off : finalSt==='FE'?sy.holiday : finalSt==='FER'?sy.vacation : finalSt==='AF'?sy.leave:finalSt;
 
-    // Horas Extras (HE)
-    const ot = state.overtime?.[mK]?.[cK];
-    let otMins = 0, otKind = null;
+    const ot = state.overtime?.[mK]?.[cK]; let otMins = 0, otKind = null;
     if(state.config.overtime.enabled && ot && ot.minutes > 0) {
       otMins = ot.minutes;
-      otKind = ot.kind === 'AUTO' ? ((dow===0 || isHol || auto!=='T') ? '100' : '50') : ot.kind;
+      if(ot.kind === 'AUTO') otKind = (dow===0 || isHol || auto!=='T') ? '100' : '50';
+      else otKind = ot.kind;
     }
-
-    return { status: finalSt, autoStatus: auto, isManualDiff: finalSt!==auto, isWeekend: dow===0||dow===6, isHoliday: isHol, isYellow: isYel, displayText: txt, note: man?.note||'', otMins, otKind, ruleObj };
+    return { status: finalSt, autoStatus: auto, isManualDiff: finalSt!==auto, isWeekend: dow===0||dow===6, isHoliday: isHol, isYellow: isYel, displayText: txt, note: man?.note||'', otMins, otKind, ruleObj: rObj };
   },
 
   calcDailyNetHours(emp) {
-    const parse = (e,x) => {
+    const p = (e,x) => {
       if(!e||!x) return 0;
       let [h1,m1]=e.split(':').map(Number), [h2,m2]=x.split(':').map(Number);
       if(isNaN(h1)||isNaN(h2)) return 0;
-      let dif = (h2*60+m2)-(h1*60+m1);
-      return dif<=0 ? dif+1440 : dif;
+      let df = (h2*60+m2)-(h1*60+m1);
+      return df<=0 ? df+1440 : df;
     };
-    let g = parse(emp.entryTime, emp.exitTime);
-    if(emp.hasSecondShift) g += parse(emp.entryTime2, emp.exitTime2);
+    let g = p(emp.entryTime, emp.exitTime);
+    if(emp.hasSecondShift) g += p(emp.entryTime2, emp.exitTime2);
     return Math.max(0, g - (Number(emp.breakMinutes)||0)) / 60;
   },
 
+  getVisibleDays(state, year, month) {
+    const md = this.getDaysInMonth(year, month);
+    const s = Math.max(1, Math.min(md, Number(state.config.periodStartDay) || 1));
+    const e = Number(state.config.periodEndDay) || 0;
+    const ed = e > 0 ? Math.max(s, Math.min(md, e)) : md;
+    const l = []; for (let d=s; d<=ed; d++) l.push(d); return l;
+  },
+
+  doPeriodsOverlap(startA, endA, startB, endB) { return startA <= endB && startB <= endA; },
+
   analyzeMonth(state, y, m) {
-    const days = Array.from({length: this.getDaysInMonth(y, m)}, (_,i) => i+1);
+    const days = this.getVisibleDays(state, y, m);
     const mtx = {}, daily = {}, blk = {}, alerts = [];
     
     days.forEach(d => daily[d] = { w:0, f:0 });
     state.groups.forEach(g => { blk[g.id] = {}; days.forEach(d => blk[g.id][d] = 0); });
 
     let act = 0, ftVac = 0;
+    const matMap = new Map();
+    
     state.employees.forEach(emp => {
-      const inFt = this.isEmpInFooter(state, emp, y, m);
+      const mat = (emp.matricula || '').trim();
+      if (!mat || !emp.name?.trim()) alerts.push({ severity: 'critico', text: `Cadastro incompleto: "${emp.name || 'Sem Nome'}" sem matrícula ou nome.`, empId: emp.id });
+      else if (matMap.has(mat)) alerts.push({ severity: 'critico', text: `Matrícula duplicada (${mat}): "${emp.name}" e "${matMap.get(mat).name}".`, empId: emp.id });
+      else matMap.set(mat, emp);
+
+      const inFt = this.isEmployeeInFooterVacation(state, emp, y, m);
       if(inFt) ftVac++; else if(emp.status==='ativo') act++;
       
-      let wD=0, fD=0, o50=0, o100=0, oBan=0, baseH=0, lastX=null;
+      let wD=0, fD=0, o50=0, o100=0, oBan=0, baseH=0, lastX=null, manAdj=0;
       const netH = this.calcDailyNetHours(emp);
+
+      let consWork=0, maxConsW=0, fdEx=null, consSun=0, maxConsSun=0, sdEx=null;
 
       days.forEach(d => {
         if(inFt) return;
         const c = this.resolveCell(state, emp, y, m, d);
-        if(c.status==='T') { wD++; daily[d].w++; if(blk[emp.groupId]) blk[emp.groupId][d]++; baseH+=netH; }
-        else if(c.status==='F'||c.status==='FE') { fD++; daily[d].f++; }
+        if(c.isManualDiff) manAdj++;
+        const dow = this.getDayOfWeekUTC(y, m, d);
+
+        if(c.status==='T') { 
+          wD++; daily[d].w++; if(blk[emp.groupId]) blk[emp.groupId][d]++; baseH+=netH; 
+          consWork++; if(consWork>maxConsW) { maxConsW=consWork; if(consWork===7) fdEx=d; }
+          if(dow===0) { consSun++; if(consSun>maxConsSun) { maxConsSun=consSun; if(consSun===2) sdEx=d; } }
+        }
+        else if(c.status==='F'||c.status==='FE') { fD++; daily[d].f++; consWork=0; if(dow===0) consSun=0; }
+        else { consWork=0; if(dow===0) consSun=0; }
 
         if(c.otMins>0) {
           if(c.otKind==='50') o50+=c.otMins; else if(c.otKind==='100') o100+=c.otMins; else if(c.otKind==='BANCO') oBan+=c.otMins;
@@ -324,7 +306,6 @@ const ScheduleEngine = {
           if(c.status==='FER'||c.status==='AF') alerts.push({severity:'critico', text:`HE lançada para ${emp.name} em dia de Férias/Afastamento (Dia ${d}).`, day:d, empId: emp.id});
         }
         
-        // Interjornada
         if(c.status==='T' && emp.entryTime) {
           let [hh,mm]=emp.entryTime.split(':').map(Number);
           let eAbs = d*1440 + hh*60 + mm;
@@ -335,26 +316,42 @@ const ScheduleEngine = {
       });
 
       if((o50+o100) > state.config.overtime.maxMonthlyMinutes) alerts.push({severity:'aviso', text:`${emp.name} excedeu limite mensal de HE (${formatMins(o50+o100)}).`, empId:emp.id});
-      mtx[emp.id] = { emp, inFt, wD, fD, baseH, o50, o100, oBan, tH: baseH + ((o50+o100)/60) };
+      if(!inFt && maxConsW > 6) alerts.push({severity:'aviso', text:`${emp.name} fez ${maxConsW} dias consecutivos (a partir do dia ${fdEx}).`, empId:emp.id, day:fdEx});
+      if(!inFt && maxConsSun >= 2) alerts.push({severity:'aviso', text:`${emp.name} trabalhou ${maxConsSun} domingos seguidos (dia ${sdEx}).`, empId:emp.id, day:sdEx});
+
+      mtx[emp.id] = { emp, inFt, wD, fD, baseH, o50, o100, oBan, tH: baseH + ((o50+o100)/60), manAdj };
     });
 
+    for (let i = 0; i < state.vacations.length; i++) {
+      for (let j = i + 1; j < state.vacations.length; j++) {
+        const v1 = state.vacations[i], v2 = state.vacations[j];
+        if (v1.employeeId === v2.employeeId && this.doPeriodsOverlap(v1.startDate, v1.endDate, v2.startDate, v2.endDate)) {
+          alerts.push({ severity: 'critico', text: `Sobreposição de férias para Matrícula ${v1.employeeId} (${v1.startDate} a ${v1.endDate}).`, empId: v1.employeeId });
+        }
+      }
+    }
+
     const minG = Number(state.config.minCoverage)||0;
-    let dOk = 0; days.forEach(d => { if(daily[d].w >= minG) dOk++; });
+    let dOk = 0; const lowD = [];
+    days.forEach(d => { if(daily[d].w >= minG) dOk++; else lowD.push(d); });
+    if(lowD.length) alerts.push({severity:'critico', text:`Cobertura total < ${minG} em ${lowD.length} dia(s).`, day:lowD[0]});
 
     const bMetrics = state.groups.map(g => {
-      const gAct = state.employees.filter(e => e.groupId===g.id && !this.isEmpInFooter(state, e, y, m));
-      const minB = Number(g.minCoverage)||1;
+      const gAct = state.employees.filter(e => e.groupId===g.id && !this.isEmployeeInFooterVacation(state, e, y, m));
+      const minB = Number(g.minCoverage) || 1;
       const vls = days.map(d => blk[g.id]?.[d]||0);
-      return { group:g, active:gAct.length, min:minB, avg:vls.reduce((a,b)=>a+b,0)/days.length||0, minObs:Math.min(...vls)||0, dailyMap: blk[g.id]||{} };
+      const mObs = Math.min(...vls)||0;
+      if(gAct.length && mObs < minB) alerts.push({severity:'aviso', text:`Turno ${g.name} < ${minB} no dia ${days.find(d=>blk[g.id][d]<minB)}.`});
+      return { group:g, active:gAct.length, min:minB, avg:vls.reduce((a,b)=>a+b,0)/days.length||0, minObs:mObs, totalBlockHours: gAct.reduce((s,e)=>s+(mtx[e.id]?.tH||0),0), dailyMap: blk[g.id]||{} };
     });
 
     if(!alerts.length) alerts.push({severity:'ok', text:'Escala 100% validada sem conflitos.'});
-    return { days, mtx, daily, bMetrics, alerts, act, ftVac, cov: days.length ? Math.round((dOk/days.length)*100) : 100 };
+    return { days, mtx, daily, bMetrics, alerts, act, ftVac, cov: days.length ? Math.round((dOk/days.length)*100) : 100, totalEmployees: state.employees.length };
   }
 };
 
 // ============================================================================
-// 4. ESTADO & PERSISTÊNCIA (Store)
+// 4. ESTADO (Store) COM MIGRAÇÃO E HISTÓRICO
 // ============================================================================
 function createReferenceModelState() {
   return {
@@ -373,8 +370,8 @@ function createReferenceModelState() {
       { id: 'grp_tarde', name: 'Tarde', order: 3, minCoverage: 2, repeatHeader: true, spacerBefore: true }
     ],
     employees: [
-      { id: 'emp_1', name: 'RODNEY GUSTAVO', matricula: '33854', entryTime: '05:00', exitTime: '14:00', breakMinutes: 60, hasSecondShift: false, groupId: 'grp_manha', scaleLabel: 'S/D-2', scaleColor: '#5b9bd5', ruleType: 'SD2', cycleStartDate: '2026-11-01', workDays: 6, offDays: 1, status: 'ativo', scaleChanges: [] },
-      { id: 'emp_2', name: 'TIAGO PEDRO', matricula: '32992', entryTime: '05:00', exitTime: '14:00', breakMinutes: 60, hasSecondShift: false, groupId: 'grp_manha', scaleLabel: 'S/D-1', scaleColor: '#5b9bd5', ruleType: 'SD1', cycleStartDate: '2026-11-01', workDays: 6, offDays: 1, status: 'ativo', scaleChanges: [] },
+      { id: 'emp_1', name: 'RODNEY GUSTAVO', matricula: '33854', entryTime: '05:00', exitTime: '14:00', breakMinutes: 60, hasSecondShift: false, entryTime2: '', exitTime2: '', groupId: 'grp_manha', scaleLabel: 'S/D-2', scaleColor: '#5b9bd5', ruleType: 'SD2', cycleStartDate: '2026-11-01', workDays: 6, offDays: 1, status: 'ativo', scaleChanges: [] },
+      { id: 'emp_2', name: 'TIAGO PEDRO', matricula: '32992', entryTime: '05:00', exitTime: '14:00', breakMinutes: 60, hasSecondShift: false, entryTime2: '', exitTime2: '', groupId: 'grp_manha', scaleLabel: 'S/D-1', scaleColor: '#5b9bd5', ruleType: 'SD1', cycleStartDate: '2026-11-01', workDays: 6, offDays: 1, status: 'ativo', scaleChanges: [] },
       { id: 'emp_3', name: 'MATHEUS ARRUDA', matricula: '39326', entryTime: '05:00', exitTime: '09:00', breakMinutes: 0, hasSecondShift: true, entryTime2: '15:00', exitTime2: '19:00', groupId: 'grp_dupla', scaleLabel: 'S/D-1', scaleColor: '#5b9bd5', ruleType: '5x2', cycleStartDate: '2026-11-02', workDays: 5, offDays: 2, status: 'ativo', scaleChanges: [] }
     ],
     vacations: [], manualOverrides: {}, overtime: {}
@@ -383,10 +380,7 @@ function createReferenceModelState() {
 
 const Store = {
   state: null,
-  runtime: {
-    activeTab: 'dashboard', searchQuery: '', brushMode: 'F', selectedCells: new Set(),
-    copiedBlock: null, previewZoom: 85, undoStack: [], redoStack: []
-  },
+  runtime: { activeTab: 'dashboard', offlineMode: false, searchQuery: '', brushMode: 'F', selectedCells: new Set(), copiedRowPattern: null, previewZoom: 85, undoStack: [], redoStack: [] },
   listeners: new Set(),
   
   init() { 
@@ -480,7 +474,7 @@ const Store = {
 };
 
 // ============================================================================
-// 5. RENDERIZADOR E DOM PATCHING CIRÚRGICO
+// 5. RENDERER E DOM PATCHING CIRÚRGICO
 // ============================================================================
 const Renderer = {
   debouncedAnalytics: debounce((state) => {
@@ -501,7 +495,7 @@ const Renderer = {
     html += `</thead><tbody>`;
 
     const activeEmps = [], fVacEmps = [];
-    emps.forEach(e => ScheduleEngine.isEmpInFooter(state, e, y, m) ? fVacEmps.push(e) : activeEmps.push(e));
+    emps.forEach(e => ScheduleEngine.isEmployeeInFooterVacation(state, e, y, m) ? fVacEmps.push(e) : activeEmps.push(e));
 
     state.groups.sort((a,b)=>a.order-b.order).forEach((grp, idx) => {
       const gE = activeEmps.filter(e => e.groupId === grp.id);
@@ -538,8 +532,17 @@ const Renderer = {
 
   patchGrid(state, changedKeys = null, forceFull = false) {
     if(forceFull || !changedKeys) {
-      $('editorGridContainer').innerHTML = this.buildSheetHTML(state, true);
-      $('liveOfficialPreviewMount').innerHTML = this.buildSheetHTML(state, false); return; } const y = state.selectedYear, m = state.selectedMonth; changedKeys.forEach(k => { const [eId, d] = k.split('\vert{}'); const emp = state.employees.find(e => e.id === eId); if(!emp) return; const c = ScheduleEngine.resolveCell(state, emp, y, m, Number(d)); $$(`td.cell-day[data-emp-id="${eId}"][data-day="${d}"]`).forEach(td => {
+      if($('editorGridContainer')) $('editorGridContainer').innerHTML = this.buildSheetHTML(state, true);
+      if($('liveOfficialPreviewMount')) $('liveOfficialPreviewMount').innerHTML = this.buildSheetHTML(state, false);
+      return;
+    }
+    const y = state.selectedYear, m = state.selectedMonth;
+    changedKeys.forEach(k => {
+      const [eId, d] = k.split('|');
+      const emp = state.employees.find(e => e.id === eId);
+      if(!emp) return;
+      const c = ScheduleEngine.resolveCell(state, emp, y, m, Number(d));
+      $$(`td.cell-day[data-emp-id="${eId}"][data-day="${d}"]`).forEach(td => {
         td.className = `cell-day ${c.isWeekend?'is-weekend':''} ${c.isYellow?'is-yellow':''} ${c.status==='FER'?'is-vacation':''} ${c.status==='AF'?'is-leave':''} ${c.isManualDiff?'is-manual':''} ${Store.runtime.selectedCells.has(k)?'cell-selected':''}`;
         let txt = c.displayText;
         if(c.otMins && state.config.overtime.showOnSheet) txt += `<span class="he-mini">${c.otMins/60}h</span>`;
@@ -556,9 +559,12 @@ const Renderer = {
     r.setProperty('--sheet-header-bg', c.headerBg); r.setProperty('--sheet-yellow', c.yellowHighlight);
     r.setProperty('--sheet-weekend', c.weekendBg); r.setProperty('--sheet-scale', c.scaleBadge);
 
-    $('topMonthSelect').value = state.selectedMonth; $('topYearInput').value = state.selectedYear;
-    $('chkShowWorkSymbol').checked = state.config.showWorkSymbol; $('lblWorkSym').textContent = state.config.symbols.work;
-    $('chkShowWeekdayRow').checked = state.config.showWeekdayRow; $('chkShowHESheet').checked = state.config.overtime.showOnSheet;
+    if($('topMonthSelect')) $('topMonthSelect').value = state.selectedMonth; 
+    if($('topYearInput')) $('topYearInput').value = state.selectedYear;
+    if($('chkShowWorkSymbol')) $('chkShowWorkSymbol').checked = state.config.showWorkSymbol; 
+    if($('lblWorkSym')) $('lblWorkSym').textContent = state.config.symbols.work;
+    if($('chkShowWeekdayRow')) $('chkShowWeekdayRow').checked = state.config.showWeekdayRow; 
+    if($('chkShowHESheet')) $('chkShowHESheet').checked = state.config.overtime.showOnSheet;
     
     if(scope === 'all' || scope === 'cells') {
       this.patchGrid(state, null, true);
@@ -568,29 +574,42 @@ const Renderer = {
 };
 
 // ============================================================================
-// 6. EXPORTAÇÃO
+// 6. EXPORTAÇÃO COMPLETA
 // ============================================================================
 const ExportService = {
-  async generatePNG(state) {
-    UI.toast('A renderizar...', 'warn');
-    const staging = $('printStagingArea');
-    const mode = $('exportSplitMode').value;
-    const days = ScheduleEngine.getVisibleDays(state, state.selectedYear, state.selectedMonth);
-    const chunks = mode === 'fortnight' && days.length > 15 ? [days.filter(d=>d<=15), days.filter(d=>d>15)] : [days];
-    
-    const canvases = [];
+  getDayChunks(state, splitMode) {
+    const dList = ScheduleEngine.getVisibleDays(state, state.selectedYear, state.selectedMonth);
+    if(splitMode === 'fortnight' && dList.length > 15) return [dList.filter(d=>d<=15), dList.filter(d=>d>15)];
+    return [dList];
+  },
+
+  async renderCanvases(state, splitMode, scaleF) {
+    const chunks = this.getDayChunks(state, splitMode), canvases = [], staging = $('printStagingArea');
     for(const chunk of chunks) {
       staging.innerHTML = Renderer.buildSheetHTML(state, { interactive: false, ignoreSearch: true, customDays: chunk });
       const p = staging.querySelector('.official-sheet-paper');
       const expectedW = 384 + chunk.length * 25 + 16;
       if(window.html2canvas) {
         try {
-          const c = await window.html2canvas(p, { scale: Number($('exportScaleSelect').value)||2, width: expectedW, windowWidth: expectedW+40 });
+          const c = await window.html2canvas(p, { scale: scaleF, backgroundColor: '#ffffff', width: expectedW, windowWidth: expectedW+40 });
           canvases.push(c);
-        } catch(e) { canvases.push(this.fallbackCanvas(state, chunk)); }
-      } else canvases.push(this.fallbackCanvas(state, chunk));
+        } catch(e) { canvases.push(this.fallbackCanvas(expectedW)); }
+      } else canvases.push(this.fallbackCanvas(expectedW));
     }
+    return canvases;
+  },
 
+  fallbackCanvas(w) {
+    const c = document.createElement('canvas'); c.width = w; c.height = 100;
+    const ctx = c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,100);
+    ctx.fillStyle='#000'; ctx.fillText('Fallback Ativado. Use Exportar PDF.', 20, 50); return c;
+  },
+
+  async generatePNG(state) {
+    UI.toast('A gerar imagem PNG...', 'warn');
+    const split = $('exportSplitMode')?.value || 'full', scale = Number($('exportScaleSelect')?.value)||2;
+    const canvases = await this.renderCanvases(state, split, scale);
+    
     const final = document.createElement('canvas');
     final.width = Math.max(...canvases.map(c=>c.width));
     final.height = canvases.reduce((a,c)=>a+c.height, 0) + (canvases.length-1)*60;
@@ -598,55 +617,123 @@ const ExportService = {
     let y = 0; canvases.forEach(c => { ctx.drawImage(c, 0, y); y += c.height + 60; });
 
     const url = final.toDataURL('image/png');
-    $('exportImageResultBox').innerHTML = `<img src="${url}">`;
-    $('exportRenderStatus').textContent = `Pronto (${final.width}x${final.height}px)`;
-    $('btnDownloadPng').disabled = false;
+    if($('exportImageResultBox')) $('exportImageResultBox').innerHTML = `<img src="${url}">`;
+    if($('exportRenderStatus')) $('exportRenderStatus').textContent = `Pronto (${final.width}x${final.height}px)`;
+    if($('btnDownloadPng')) $('btnDownloadPng').disabled = false; 
     Store.runtime.lastGeneratedPngUrl = url;
     UI.toast('PNG gerado!'); return url;
   },
 
-  fallbackCanvas(state, daysArray) {
-    const c = document.createElement('canvas'); c.width = 384 + daysArray.length*25; c.height = 400; // Simplified for brevity in this block
-    const ctx = c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
-    ctx.fillStyle='#000'; ctx.fillText('Fallback de Segurança Ativado - PDF/Print disponíveis', 20, 50);
-    return c;
+  async exportPDF(state) {
+    UI.toast('Preparando documento PDF...');
+    const split = $('exportSplitMode')?.value || 'full', scale = Number($('exportScaleSelect')?.value)||2;
+    const canvases = await this.renderCanvases(state, split, scale);
+    if(!window.jspdf || !window.jspdf.jsPDF) return window.print();
+
+    const pdf = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const useW = pdf.internal.pageSize.getWidth() - 14, useH = pdf.internal.pageSize.getHeight() - 14;
+    let first = true;
+
+    canvases.forEach(c => {
+      const hMm = useW * (c.height / c.width);
+      if(hMm <= useH) {
+        if(!first) pdf.addPage('a4', 'landscape');
+        first = false; pdf.addImage(c.toDataURL('image/png'), 'PNG', 7, 7, useW, hMm);
+      } else {
+        const pxMm = c.width / useW, slicePx = Math.floor(useH * pxMm);
+        let oy = 0;
+        while(oy < c.height) {
+          if(!first) pdf.addPage('a4', 'landscape');
+          first = false;
+          const cp = Math.min(slicePx, c.height - oy);
+          const sc = document.createElement('canvas'); sc.width = c.width; sc.height = cp;
+          sc.getContext('2d').drawImage(c, 0, oy, c.width, cp, 0, 0, c.width, cp);
+          pdf.addImage(sc.toDataURL('image/png'), 'PNG', 7, 7, useW, cp/pxMm);
+          oy += cp;
+        }
+      }
+    });
+    pdf.save(`ESCALA_${MONTH_NAMES[state.selectedMonth-1]}_${state.selectedYear}.pdf`);
+    UI.toast('PDF guardado!');
+  },
+
+  exportCSV(state) {
+    const y = state.selectedYear, m = state.selectedMonth;
+    const days = ScheduleEngine.getVisibleDays(state, y, m);
+    const a = ScheduleEngine.analyzeMonth(state, y, m);
+    
+    const hCols = ['Peg.','Larg.','2a Peg.','2a Larg.','Matricula','Assistente','Bloco','Escala', ...days.map(d=>`Dia ${d}`), 'Trabalhados','Folgas','Feriados/Ferias','Base (h)','HE 50% (h)','HE 100% (h)','Banco (h)','Total c/ HE (h)'];
+    const lines = [hCols.map(escapeCSV).join(';')];
+
+    Renderer.getProcessedEmployees(state, true).forEach(emp => {
+      const g = state.groups.find(x => x.id === emp.groupId);
+      const em = a.mtx[emp.id];
+      const dVals = days.map(d => em.inFt ? 'FERIAS' : ScheduleEngine.resolveCell(state, emp, y, m, d).status);
+      const r = [
+        emp.entryTime, emp.exitTime, emp.hasSecondShift?emp.entryTime2:'', emp.hasSecondShift?emp.exitTime2:'',
+        emp.matricula, emp.name, g?g.name:'', emp.scaleLabel, ...dVals,
+        em.wD, em.fD, em.specialDaysCount, em.baseHours.toFixed(1), (em.o50/60).toFixed(1), (em.o100/60).toFixed(1), (em.oBan/60).toFixed(1), em.tH.toFixed(1)
+      ];
+      lines.push(r.map(escapeCSV).join(';'));
+    });
+
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const aEl = document.createElement('a'); aEl.href = url; aEl.download = `RELATORIO_${MONTH_NAMES[m-1]}_${y}.csv`;
+    document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl); URL.revokeObjectURL(url);
+    UI.toast('CSV Exportado com sucesso!');
   }
 };
 
 // ============================================================================
-// 7. UI E INTERAÇÕES AVANÇADAS
+// 7. UI GERAL & EVENTOS (Interage com auth.js via EventListener)
 // ============================================================================
 const UI = {
-  isDraggingFolga: false, dragStartCell: null,
-  isSelectingMass: false,
+  isDraggingFolga: false, dragStartCell: null, isSelectingMass: false,
 
   init() {
     this.bindSidebar(); this.bindGridEvents(); this.bindContextBar(); this.bindForms();
-    this.bindFirebase(); this.bindPopover();
+    this.bindPopover(); this.bindShortcuts(); this.listenAuthEvents();
+    
+    // Configura interface inicial local
     CloudSyncAdapter.init();
   },
 
   toast(msg, type='ok') {
     const t = document.createElement('div'); t.className = `toast-item ${type}`; t.textContent = msg;
-    $('toastContainer').appendChild(t);
-    setTimeout(() => t.remove(), 3000);
+    if($('toastContainer')) { $('toastContainer').appendChild(t); setTimeout(() => t.remove(), 3000); }
   },
 
   updateCloudBadge(text, color) {
-    const b = $('topCloudStatus'); b.textContent = text; b.style.color = color; b.style.borderColor = color;
+    if($('topCloudStatus')) { $('topCloudStatus').textContent = text; $('topCloudStatus').style.color = color; $('topCloudStatus').style.borderColor = color; }
   },
 
   updateHistoryBtns() {
-    $('undoCountBadge').textContent = Store.runtime.undoStack.length;
-    $('btnUndo').disabled = !Store.runtime.undoStack.length;
-    $('redoCountBadge').textContent = Store.runtime.redoStack.length;
-    $('btnRedo').disabled = !Store.runtime.redoStack.length;
+    if($('undoCountBadge')) $('undoCountBadge').textContent = Store.runtime.undoStack.length;
+    if($('btnUndo')) $('btnUndo').disabled = !Store.runtime.undoStack.length;
+    if($('redoCountBadge')) $('redoCountBadge').textContent = Store.runtime.redoStack.length;
+    if($('btnRedo')) $('btnRedo').disabled = !Store.runtime.redoStack.length;
+  },
+
+  listenAuthEvents() {
+    // Estes eventos são emitidos pelo auth.js
+    window.addEventListener('auth-success', async (e) => {
+      Store.runtime.offlineMode = false;
+      await CloudSyncAdapter.onAuthSuccess(e.detail.user);
+    });
+    window.addEventListener('auth-logout', () => {
+      CloudSyncAdapter.onAuthLogout();
+    });
+    window.addEventListener('app-offline-mode', () => {
+      Store.runtime.offlineMode = true;
+    });
   },
 
   bindSidebar() {
     $$('.nav-item').forEach(b => b.addEventListener('click', () => {
       $$('.nav-item, .tab-panel').forEach(el => el.classList.remove('active'));
-      b.classList.add('active'); $(`tab-${b.dataset.tab}`).classList.add('active');
+      b.classList.add('active'); 
+      if($(`tab-${b.dataset.tab}`)) $(`tab-${b.dataset.tab}`).classList.add('active');
       Store.runtime.activeTab = b.dataset.tab;
     }));
     $$('[data-switch-tab]').forEach(b => b.addEventListener('click', () => {
@@ -654,14 +741,21 @@ const UI = {
       $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${b.dataset.switchTab}`));
       Store.runtime.activeTab = b.dataset.switchTab;
     }));
-    $('btnToggleSidebar').addEventListener('click', () => $('sidebar').classList.toggle('collapsed'));
-    $('btnTogglePreviewPane').addEventListener('click', () => {
+    if($('btnToggleSidebar')) $('btnToggleSidebar').addEventListener('click', () => $('sidebar').classList.toggle('collapsed'));
+    if($('btnTogglePreviewPane')) $('btnTogglePreviewPane').addEventListener('click', () => {
       $('workspaceSplit').classList.toggle('preview-hidden'); $('workspaceSplit').classList.remove('preview-maximized');
     });
-    $('btnUndo').addEventListener('click', () => Store.undo());
-    $('btnRedo').addEventListener('click', () => Store.redo());
-    $('btnThemeToggle').addEventListener('click', () => { Store.state.theme = Store.state.theme==='light'?'dark':'light'; Store.commit('all'); });
-    $('btnSidebarGeneratePng').addEventListener('click', () => { $$('[data-tab="exportar"]')[0].click(); ExportService.generatePNG(Store.state); });
+    if($('btnUndo')) $('btnUndo').addEventListener('click', () => Store.undo());
+    if($('btnRedo')) $('btnRedo').addEventListener('click', () => Store.redo());
+    if($('btnThemeToggle')) $('btnThemeToggle').addEventListener('click', () => { Store.state.theme = Store.state.theme==='light'?'dark':'light'; Store.commit('all'); });
+    if($('btnSidebarGeneratePng')) $('btnSidebarGeneratePng').addEventListener('click', () => { $$('[data-tab="exportar"]')[0].click(); ExportService.generatePNG(Store.state); });
+
+    if($('topMonthSelect')) {
+      $('topMonthSelect').innerHTML = MONTH_NAMES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+      $('topMonthSelect').addEventListener('change', e => { Store.state.selectedMonth = Number(e.target.value); Store.commit('all'); });
+    }
+    if($('topYearInput')) $('topYearInput').addEventListener('change', e => { Store.state.selectedYear = Number(e.target.value); Store.commit('all'); });
+    if($('globalSearchInput')) $('globalSearchInput').addEventListener('input', e => { Store.runtime.searchQuery = e.target.value; Renderer.renderAll(Store.state, Store.runtime.activeTab); });
   },
 
   applyBrush(empId, day, mode) {
@@ -678,13 +772,13 @@ const UI = {
 
   bindGridEvents() {
     const grid = $('editorGridContainer');
+    if(!grid) return;
     let painting = false, pSet = new Set();
 
     grid.addEventListener('mousedown', e => {
-      if (e.button === 2) return; // Direito = context menu no scale
+      if (e.button === 2) return;
       const trName = e.target.closest('td.cell-name');
       if (trName && e.ctrlKey) {
-         // Selecionar linha inteira
          Store.runtime.selectedRowEmpId = trName.dataset.selectRow;
          const days = ScheduleEngine.getVisibleDays(Store.state, Store.state.selectedYear, Store.state.selectedMonth);
          days.forEach(d => Store.runtime.selectedCells.add(`${trName.dataset.selectRow}|${d}`));
@@ -726,8 +820,9 @@ const UI = {
     });
 
     window.addEventListener('mouseup', e => {
-      if(painting) { painting = false; Store.commit('cells'); }
-      if(this.isSelectingMass) { this.isSelectingMass = false; }
+      if(painting) { painting = false; Store.commit('cells'); Renderer.debouncedAnalytics(Store.state); }
+      if(this.isSelectingMass) this.isSelectingMass = false;
+      
       if(this.isDraggingFolga) {
         const td = e.target.closest('td.cell-day');
         if(td && td.dataset.empId === this.dragStartCell.eId && Number(td.dataset.day) !== this.dragStartCell.d) {
@@ -736,7 +831,7 @@ const UI = {
           this.applyBrush(td.dataset.empId, Number(td.dataset.day), 'F');
           Store.commit('cells');
           Renderer.patchGrid(Store.state, [`${this.dragStartCell.eId}|${this.dragStartCell.d}`, `${td.dataset.empId}|${td.dataset.day}`]);
-          this.toast('Folga movida! (1 passo de Undo)', 'ok');
+          this.toast('Folga movida!', 'ok');
         }
         this.isDraggingFolga = false;
       }
@@ -746,34 +841,21 @@ const UI = {
       const scaleBadge = e.target.closest('.cell-scale-badge');
       if (scaleBadge) {
         e.preventDefault();
-        const empId = scaleBadge.dataset.ctxEmp;
         const rect = scaleBadge.getBoundingClientRect();
-        this.openPopover(empId, rect.right + 5, rect.top);
-      }
-    });
-
-    // Teclado
-    window.addEventListener('keydown', e => {
-      if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
-      const k = e.key.toUpperCase();
-      const map = { 'T':'T', 'F':'F', 'E':'FE', 'Y':'Y', 'V':'FER', 'L':'AF', 'A':'A', 'H':'HE', 'DELETE':'A', 'BACKSPACE':'A' };
-      if(map[k] && Store.runtime.selectedCells.size > 0) {
-        Store.recordHistory(`Atalho Multi (${map[k]})`);
-        Store.runtime.selectedCells.forEach(key => {
-          const [eId, d] = key.split('|'); this.applyBrush(eId, Number(d), map[k]);
-        });
-        Store.commit('cells'); Renderer.patchGrid(Store.state, Array.from(Store.runtime.selectedCells));
+        this.openPopover(scaleBadge.dataset.ctxEmp, rect.right + 5, rect.top);
       }
     });
   },
 
   bindContextBar() {
-    $$('.brush-btn').forEach(b => b.addEventListener('click', () => {
-      Store.runtime.brushMode = b.dataset.brush;
-      $$('.brush-btn').forEach(x => x.classList.remove('active')); b.classList.add('active');
-    }));
+    $$('.brush-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        Store.runtime.brushMode = b.dataset.brush;
+        $$('.brush-btn').forEach(x => x.classList.remove('active')); b.classList.add('active');
+      });
+    });
 
-    $('btnContextApplyBrush').addEventListener('click', () => {
+    if($('btnContextApplyBrush')) $('btnContextApplyBrush').addEventListener('click', () => {
       if(!Store.runtime.selectedCells.size) return;
       Store.recordHistory(`Massa: ${Store.runtime.brushMode}`);
       Store.runtime.selectedCells.forEach(k => {
@@ -782,19 +864,50 @@ const UI = {
       Store.commit('cells'); Renderer.patchGrid(Store.state, Array.from(Store.runtime.selectedCells));
     });
 
-    $('btnContextClear').addEventListener('click', () => {
+    if($('btnContextClear')) $('btnContextClear').addEventListener('click', () => {
       Store.runtime.selectedCells.clear(); this.updateContextBar(); Renderer.patchGrid(Store.state, null, true);
+    });
+
+    if($('btnCopyRow')) $('btnCopyRow').addEventListener('click', () => {
+      const empId = Store.runtime.selectedRowEmpId;
+      if (!empId) return this.toast('Selecione uma linha (Ctrl+Clique no nome).', 'warn');
+      const y = Store.state.selectedYear, m = Store.state.selectedMonth;
+      const emp = Store.state.employees.find(e => e.id === empId);
+      const pattern = {};
+      ScheduleEngine.getVisibleDays(Store.state, y, m).forEach(d => {
+        const r = ScheduleEngine.resolveCell(Store.state, emp, y, m, d);
+        pattern[d] = { status: r.status, yellow: r.isYellow ? 'yes' : 'default' };
+      });
+      Store.runtime.copiedRowPattern = { sourceName: emp.name, pattern };
+      if($('btnPasteRow')) $('btnPasteRow').disabled = false; this.toast(`Linha de ${emp.name} copiada!`);
+    });
+
+    if($('btnPasteRow')) $('btnPasteRow').addEventListener('click', () => {
+      const empId = Store.runtime.selectedRowEmpId;
+      const copied = Store.runtime.copiedRowPattern;
+      if (!empId || !copied) return this.toast('Selecione o funcionário destino para colar.', 'warn');
+      Store.recordHistory(`Colar linha`);
+      const mK = ScheduleEngine.getMonthKey(Store.state.selectedYear, Store.state.selectedMonth);
+      if (!Store.state.manualOverrides[mK]) Store.state.manualOverrides[mK] = {};
+      Object.entries(copied.pattern).forEach(([dStr, val]) => {
+        Store.state.manualOverrides[mK][`${empId}_${dStr}`] = { status: val.status, yellow: val.yellow, note: `Colado` };
+      });
+      Store.commit('cells'); Renderer.patchGrid(Store.state, null, true);
+      this.toast(`Padrão colado!`);
     });
   },
 
   updateContextBar() {
-    $('contextActionBar').hidden = Store.runtime.selectedCells.size < 2;
+    if($('contextActionBar')) $('contextActionBar').hidden = Store.runtime.selectedCells.size < 2;
   },
 
-  // POPOVER PARA MUDAR REGRAS NA HORA
+  bindPopover() {
+    if($('btnPopoverCancel')) $('btnPopoverCancel').onclick = () => { $('scalePopoverMenu').hidden = true; };
+  },
+
   openPopover(empId, x, y) {
     const emp = Store.state.employees.find(e => e.id === empId);
-    if (!emp) return;
+    if (!emp || !$('scalePopoverMenu')) return;
     const pop = $('scalePopoverMenu');
     $('popoverEmpName').textContent = emp.name;
     $('popoverRuleSelect').value = emp.ruleType;
@@ -804,8 +917,7 @@ const UI = {
     
     const applyShift = (days) => {
       Store.recordHistory(`Deslocar Ciclo (${days}d)`);
-      const dt = new Date($('popoverFromDate').value);
-      dt.setUTCDate(dt.getUTCDate() + days);
+      const dt = new Date($('popoverFromDate').value); dt.setUTCDate(dt.getUTCDate() + days);
       emp.scaleChanges.push({ from: $('popoverFromDate').value, ruleType: emp.ruleType, cycleStartDate: dt.toISOString().split('T')[0], scaleLabel: emp.scaleLabel, workDays: emp.workDays, offDays: emp.offDays });
       Store.commit('all'); pop.hidden = true; this.toast('Fase deslocada!');
     };
@@ -819,7 +931,7 @@ const UI = {
     };
     $('btnPopoverShiftLeft').onclick = () => applyShift(-1);
     $('btnPopoverShiftRight').onclick = () => applyShift(1);
-    $('btnPopoverCancel').onclick = () => { pop.hidden = true; };
+    
     $('btnPopoverApply').onclick = () => {
       Store.recordHistory('Nova Regra Adicionada');
       emp.scaleChanges.push({ from: $('popoverFromDate').value, ruleType: $('popoverRuleSelect').value, cycleStartDate: $('popoverFromDate').value, scaleLabel: $('popoverRuleSelect').value, workDays: emp.workDays, offDays: emp.offDays });
@@ -829,9 +941,8 @@ const UI = {
 
   openCellModal(empId, day) {
     const emp = Store.state.employees.find(e => e.id === empId);
-    if (!emp) return;
-    const y = Store.state.selectedYear, m = Store.state.selectedMonth;
-    const mK = ScheduleEngine.getMonthKey(y, m);
+    if (!emp || !$('cellModal')) return;
+    const y = Store.state.selectedYear, m = Store.state.selectedMonth, mK = ScheduleEngine.getMonthKey(y, m);
     const man = Store.state.manualOverrides[mK]?.[`${empId}_${day}`];
     const ot = Store.state.overtime[mK]?.[`${empId}_${day}`];
     const c = ScheduleEngine.resolveCell(Store.state, emp, y, m, day);
@@ -867,28 +978,77 @@ const UI = {
 
       Store.commit('cells'); $('cellModal').hidden = true;
     };
+    if($('btnCancelCellModal')) $('btnCancelCellModal').onclick = () => $('cellModal').hidden = true;
+    if($('btnCloseCellModal')) $('btnCloseCellModal').onclick = () => $('cellModal').hidden = true;
   },
 
   bindForms() {
-    $('chkShowHESheet').addEventListener('change', e => { Store.state.config.overtime.showOnSheet = e.target.checked; Store.commit('escala'); });
-    $('formHEConfig').addEventListener('submit', e => {
-      e.preventDefault(); Store.recordHistory('Limites HE');
-      Store.state.config.overtime.enabled = $('cfgHEEnabled').checked;
-      Store.state.config.overtime.maxDailyMinutes = Number($('cfgHEMaxDaily').value);
-      Store.state.config.overtime.maxMonthlyMinutes = Number($('cfgHEMaxMonthly').value);
-      Store.commit('all'); this.toast('Limites de HE atualizados!');
+    // Zoom Preview
+    const slider = $('previewZoomSlider'), valBadge = $('previewZoomValue'), stage = $('previewScaleStage');
+    if(slider) slider.addEventListener('input', e => {
+      const z = Math.max(50, Math.min(200, Number(e.target.value) || 85));
+      Store.runtime.previewZoom = z; valBadge.textContent = `${z}%`; stage.style.transform = `scale(${z / 100})`;
+    });
+    if($('btnZoomOut')) $('btnZoomOut').addEventListener('click', () => { slider.value = Store.runtime.previewZoom - 10; slider.dispatchEvent(new Event('input')); });
+    if($('btnZoomIn')) $('btnZoomIn').addEventListener('click', () => { slider.value = Store.runtime.previewZoom + 10; slider.dispatchEvent(new Event('input')); });
+    if($('btnZoomFit')) $('btnZoomFit').addEventListener('click', () => {
+      const vp = $('previewViewport'), p = document.querySelector('#liveOfficialPreviewMount .official-sheet-paper');
+      if (vp && p) { slider.value = Math.floor(((vp.clientWidth - 36) / p.scrollWidth) * 100); slider.dispatchEvent(new Event('input')); }
+    });
+
+    if($('btnNewEmployee')) $('btnNewEmployee').onclick = () => { if($('employeeModal')) $('employeeModal').hidden = false; };
+    if($('btnCancelEmpModal')) $('btnCancelEmpModal').onclick = () => { $('employeeModal').hidden = true; };
+    if($('btnCloseEmpModal')) $('btnCloseEmpModal').onclick = () => { $('employeeModal').hidden = true; };
+
+    if($('btnGeneratePngMain')) $('btnGeneratePngMain').onclick = () => ExportService.generatePNG(Store.state);
+    if($('btnDownloadPng')) $('btnDownloadPng').onclick = () => ExportService.downloadPNG(Store.state);
+    if($('btnExportPdf')) $('btnExportPdf').onclick = () => ExportService.exportPDF(Store.state);
+    if($('btnPrintSchedule')) $('btnPrintSchedule').onclick = () => ExportService.printSchedule(Store.state);
+    if($('btnExportCsvDirect')) $('btnExportCsvDirect').onclick = () => ExportService.exportCSV(Store.state);
+    if($('btnExportReportCsv')) $('btnExportReportCsv').onclick = () => ExportService.exportCSV(Store.state);
+
+    if($('btnRestoreReference')) $('btnRestoreReference').onclick = async () => {
+      const ok = await this.openDialog({ title: 'Modelo de Referência', message: 'Carregar modelo Nov/2026? Apagará os dados atuais.' });
+      if(ok) { Store.recordHistory('Modelo Ref'); Store.state = createReferenceModelState(); Store.commit('all'); this.toast('Modelo carregado!'); }
+    };
+    if($('btnWipeAll')) $('btnWipeAll').onclick = async () => {
+      const ok = await this.openDialog({ title: 'Limpar Tudo', message: 'Isto irá APAGAR TODOS os funcionários e dados locais. Tem a certeza?' });
+      if(ok) { Store.recordHistory('Limpeza'); Store.state.employees=[]; Store.state.vacations=[]; Store.state.manualOverrides={}; Store.commit('all'); this.toast('Dados limpos.'); }
+    };
+
+    if($('cfgRequireLogin')) $('cfgRequireLogin').onchange = e => { 
+      Store.state.config.requireLogin = e.target.checked; 
+      Store.commit('all'); 
+      if(e.target.checked && !CloudSyncAdapter.user && $('loginScreen')) $('loginScreen').hidden = false; 
+    };
+  },
+
+  bindShortcuts() {
+    window.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); Store.undo(); }
+      else if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) { e.preventDefault(); Store.redo(); }
+      else if (e.key === 'Escape') {
+        Store.runtime.selectedCells.clear();
+        this.updateContextBar();
+        if($('scalePopoverMenu')) $('scalePopoverMenu').hidden = true;
+        if($('cellModal')) $('cellModal').hidden = true;
+        if($('employeeModal')) $('employeeModal').hidden = true;
+        Renderer.patchGrid(Store.state, null, true);
+      }
     });
   },
 
   renderDashboardStats(state, a) {
-    $('empTotalCount').textContent = a.totalEmployees;
-    $('alertsCountBadge').textContent = a.alerts.length;
+    if($('empTotalCount')) $('empTotalCount').textContent = a.totalEmployees;
+    if($('alertsCountBadge')) $('alertsCountBadge').textContent = a.alerts.length;
     const dK = $('dashboardKpis');
     if(dK) dK.innerHTML = `
-      <div class="kpi-box"><div class="kpi-label">Efetivo Ativo</div><div class="kpi-val">${a.activeCount}</div><div class="kpi-sub">Total: ${a.totalEmployees}</div></div>
-      <div class="kpi-box warn"><div class="kpi-label">Férias (Rodapé)</div><div class="kpi-val">${a.footerVacationCount}</div></div>
-      <div class="kpi-box"><div class="kpi-label">Horas Previstas</div><div class="kpi-val">${Math.round(Object.values(a.employeeMetrics).reduce((s,x)=>s+x.totalHours,0))}h</div></div>
-      <div class="kpi-box ${a.covPercent < 100 ? 'danger' : ''}"><div class="kpi-label">Cobertura (Mín: ${state.config.minCoverage})</div><div class="kpi-val">${a.covPercent}%</div></div>
+      <div class="kpi-box"><div class="kpi-label">Efetivo Ativo</div><div class="kpi-val">${a.act}</div><div class="kpi-sub">Total: ${a.totalEmployees}</div></div>
+      <div class="kpi-box warn"><div class="kpi-label">Férias (Rodapé)</div><div class="kpi-val">${a.ftVac}</div></div>
+      <div class="kpi-box"><div class="kpi-label">Horas Previstas</div><div class="kpi-val">${Math.round(Object.values(a.mtx).reduce((s,x)=>s+x.tH,0))}h</div></div>
+      <div class="kpi-box ${a.cov < 100 ? 'danger' : ''}"><div class="kpi-label">Cobertura (Mín: ${state.config.minCoverage})</div><div class="kpi-val">${a.cov}%</div></div>
     `;
     const ul = $('dashboardAlertsList');
     if(ul) ul.innerHTML = a.alerts.map((al,i) => `<li class="alert-row ${escapeHTML(al.severity)}" data-aid="${i}"><strong>[${al.severity.toUpperCase()}]</strong> ${escapeHTML(al.text)}</li>`).join('');
@@ -896,35 +1056,55 @@ const UI = {
 
   renderReports(state, a) {
     const bb = $('reportBlocksBody');
-    if(bb) bb.innerHTML = a.blockMetrics.map(b => `<tr><td><strong>${escapeHTML(b.group.name)}</strong></td><td>${b.activeCount}</td><td>${b.minRequired}</td><td>${b.avgWorking.toFixed(1)}</td><td>${b.minObserved}</td><td>${b.totalBlockHours.toFixed(1)}h</td><td>--</td></tr>`).join('');
+    if(bb) bb.innerHTML = a.bMetrics.map(b => `<tr><td><strong>${escapeHTML(b.group.name)}</strong></td><td>${b.active}</td><td>${b.min}</td><td>${b.avg.toFixed(1)}</td><td>${b.minObs}</td><td>${b.totalBlockHours.toFixed(1)}h</td><td>--</td></tr>`).join('');
     
     const eb = $('reportEmployeesBody');
-    if(eb) eb.innerHTML = Object.values(a.employeeMetrics).map(m => `<tr><td>${m.emp.matricula}</td><td><strong>${escapeHTML(m.emp.name)}</strong></td><td>${m.emp.entryTime}</td><td>${m.workDaysCount}</td><td>${m.baseHours.toFixed(1)}h</td><td style="color:#1de9b6">${formatMins(m.ot50)}</td><td style="color:#00e676">${formatMins(m.ot100)}</td><td style="color:#eab308">${formatMins(m.otBanco)}</td><td><strong>${m.totalHours.toFixed(1)}h</strong></td><td>${m.manualAdjustments}</td></tr>`).join('');
+    if(eb) eb.innerHTML = Object.values(a.mtx).map(m => `<tr><td>${m.emp.matricula}</td><td><strong>${escapeHTML(m.emp.name)}</strong></td><td>${m.emp.entryTime}</td><td>${m.wD}</td><td>${m.baseH.toFixed(1)}h</td><td style="color:#1de9b6">${formatMins(m.o50)}</td><td style="color:#00e676">${formatMins(m.o100)}</td><td style="color:#eab308">${formatMins(m.oBan)}</td><td><strong>${m.tH.toFixed(1)}h</strong></td><td>${m.manAdj}</td></tr>`).join('');
   },
 
-  bindFirebase() {
-    $('btnSaveFbCfg').onclick = () => {
-      const cfg = $('fbConfigInput').value;
-      if(parseFirebaseConfig(cfg)) {
-        localStorage.setItem('FROTA_OS_FIREBASE_CFG', cfg);
-        window.location.reload();
-      } else this.toast('JSON de configuração inválido', 'error');
-    };
-    $('btnRemoveFbCfg').onclick = () => {
-      localStorage.removeItem('FROTA_OS_FIREBASE_CFG'); window.location.reload();
-    };
-    $('btnFbLogin').onclick = () => {
-      CloudSyncAdapter.auth.signInWithEmailAndPassword($('fbEmail').value, $('fbPass').value).catch(e => this.toast(e.message, 'error'));
-    };
-    $('btnFbRegister').onclick = () => {
-      CloudSyncAdapter.auth.createUserWithEmailAndPassword($('fbEmail').value, $('fbPass').value).catch(e => this.toast(e.message, 'error'));
-    };
-    $('btnFbLogout').onclick = () => CloudSyncAdapter.auth.signOut();
+  openDialog({ title, message, showPrompt = false, promptLabel = '', defaultValue = '', confirmText = 'Confirmar', cancelText = 'Cancelar' }) {
+    return new Promise((resolve) => {
+      const overlay = $('dialogModal');
+      $('dialogModalTitle').textContent = title || 'Confirmação';
+      $('dialogModalMessage').textContent = message || '';
+      $('btnDialogConfirm').textContent = confirmText;
+      $('btnDialogCancel').textContent = cancelText;
+
+      if (showPrompt) {
+        $('dialogPromptWrap').hidden = false;
+        $('dialogPromptLabel').textContent = promptLabel || 'Informe o valor:';
+        $('dialogPromptInput').value = defaultValue || '';
+      } else { $('dialogPromptWrap').hidden = true; }
+
+      overlay.hidden = false;
+      setTimeout(() => showPrompt ? $('dialogPromptInput').focus() : $('btnDialogConfirm').focus(), 20);
+
+      const closeAndResolve = (result) => {
+        overlay.hidden = true;
+        $('btnDialogConfirm').removeEventListener('click', onConfirm);
+        $('btnDialogCancel').removeEventListener('click', onCancel);
+        $('btnCloseDialogModal').removeEventListener('click', onCancel);
+        overlay.removeEventListener('keydown', onKeyDown);
+        resolve(result);
+      };
+
+      const onConfirm = () => closeAndResolve(showPrompt ? $('dialogPromptInput').value.trim() : true);
+      const onCancel = () => closeAndResolve(showPrompt ? null : false);
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        else if (e.key === 'Enter' && showPrompt) { e.preventDefault(); onConfirm(); }
+      };
+
+      $('btnDialogConfirm').addEventListener('click', onConfirm);
+      $('btnDialogCancel').addEventListener('click', onCancel);
+      $('btnCloseDialogModal').addEventListener('click', onCancel);
+      overlay.addEventListener('keydown', onKeyDown);
+    });
   }
 };
 
 // ============================================================================
-// 8. AUTOTESTES (22 TESTES PARA GARANTIR QUALIDADE)
+// 8. AUTOTESTES DO MOTOR (22 TESTES DE QUALIDADE)
 // ============================================================================
 window.runSelfTests = function() {
   const r = []; const ok = (n, c) => r.push({n, p: Boolean(c)});
@@ -964,17 +1144,17 @@ window.runSelfTests = function() {
   ok('19. Sobreposição Férias Deteção 2', !ScheduleEngine.doPeriodsOverlap('2026-11-01','2026-11-04', '2026-11-05','2026-11-10'));
   
   const a = ScheduleEngine.analyzeMonth(mState, 2026, 11);
-  ok('20. Horas Extras somam na Carga', a.employeeMetrics[mState.employees[0].id].totalHours > a.employeeMetrics[mState.employees[0].id].baseHours);
-  ok('21. Cobertura avaliada corretamente', a.covPercent <= 100);
+  ok('20. Horas Extras somam na Carga', a.mtx[mState.employees[0].id].tH > a.mtx[mState.employees[0].id].baseH);
+  ok('21. Cobertura avaliada corretamente', a.cov <= 100);
   ok('22. Deep Clone protege Refs', deepClone({a:1}).a === 1);
   
   const p = r.filter(x=>x.p).length;
-  $('selfTestOutput').textContent = r.map(x=>`${x.p?'[OK] ':'[FALHOU] '} ${x.n}`).join('\n') + `\n\nTotal: ${p}/${r.length} aprovados.`;
+  if($('selfTestOutput')) $('selfTestOutput').textContent = r.map(x=>`${x.p?'[OK] ':'[FALHOU] '} ${x.n}`).join('\n') + `\n\nTotal: ${p}/${r.length} aprovados.`;
   return { passed: p, total: r.length };
 };
 
 // ============================================================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO E ARRANQUE
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
   Store.init();
